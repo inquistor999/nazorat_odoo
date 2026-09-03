@@ -1,5 +1,8 @@
 import logging
 import datetime
+import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters, ConversationHandler
 from telegram.request import HTTPXRequest
@@ -263,10 +266,26 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Amaliyot bekor qilindi. /start ni bosing.")
     return ConversationHandler.END
 
+def run_dummy_server():
+    class DummyHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            self.wfile.write(b"Bot is running!")
+    
+    port = int(os.environ.get('PORT', 10000))
+    server = HTTPServer(('0.0.0.0', port), DummyHandler)
+    logging.info(f"Yolg'on web server {port}-portda ishga tushdi (Render Free tier uchun)")
+    server.serve_forever()
+
 def main():
     if not config.TELEGRAM_BOT_TOKEN:
         print("XATOLIK: .env faylida TELEGRAM_BOT_TOKEN kiritilmagan!")
         return
+
+    server_thread = threading.Thread(target=run_dummy_server, daemon=True)
+    server_thread.start()
 
     request = HTTPXRequest(
         connection_pool_size=8,

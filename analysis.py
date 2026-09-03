@@ -17,7 +17,7 @@ def extract_package_info(product_name):
         
     return {'weight_kg': 1.0, 'is_gram': False}
 
-def calculate_reorder_qty(product_name, current_stock, sales_last_180_days, lead_time_days=3, target_days=30):
+def calculate_reorder_qty(product_name, current_stock, sales_last_30_days, lead_time_days=3, target_days=30):
     """
     Zakaz miqdorini hisoblaydigan funksiya.
     lead_time_days: Zakaz yetib kelishiga ketadigan vaqt (masalan, 3 kun)
@@ -29,8 +29,8 @@ def calculate_reorder_qty(product_name, current_stock, sales_last_180_days, lead
         reorder_qty = needed_for_period - current_stock if current_stock < needed_for_period else 0
         daily_sales = 0
     else:
-        # Oxirgi 6 oydagi o'rtacha kunlik sotuv
-        daily_sales = sales_last_180_days / 180 if sales_last_180_days > 0 else 0
+        # Oxirgi 1 oydagi o'rtacha kunlik sotuv
+        daily_sales = sales_last_30_days / 30 if sales_last_30_days > 0 else 0
         
         # Kelgusi (30 kun + 3 kun yetkazish) uchun jami qancha tovar kerak?
         needed_for_period = daily_sales * (target_days + lead_time_days)

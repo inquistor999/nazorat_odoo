@@ -160,8 +160,7 @@ def generate_reorder_excel(items):
         records.append({
             'Tovar nomi': item.get('name', ''),
             'Hozirgi qoldiq (kg)': item.get('stock_qty', 0),
-            '6 Oylik sotuv (kg)': item.get('sales_qty', 0),
-            '1 Oylik o\'rtacha (kg)': round(item.get('sales_qty', 0) / 6, 2),
+            '1 Oylik sotuv (kg)': item.get('sales_qty', 0),
             'Qoldiq yetadigan kun (Days Left)': item.get('days_left', 0),
             'Zakaz miqdori (kg)': item.get('reorder_qty', 0),
             'Qadoqlar soni': item.get('pieces', 0)

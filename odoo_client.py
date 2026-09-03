@@ -179,9 +179,9 @@ class OdooClient:
 
         return monthly_sales
 
-    def get_sales_total_6m(self, product_id):
-        """Oxirgi 6 oydagi (180 kun) jami sotuv: B2B prodaja + intercompany transfer"""
-        date_from = datetime.now() - timedelta(days=180)
+    def get_sales_total_30d(self, product_id):
+        """Oxirgi 1 oydagi (30 kun) jami sotuv: B2B prodaja + intercompany transfer"""
+        date_from = datetime.now() - timedelta(days=30)
         sale_qty = self._get_sale_order_qty(product_id, date_from)
         transfer_qty = self._get_intercompany_transfer_qty(product_id, date_from)
         return round(sale_qty + transfer_qty, 2)

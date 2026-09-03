@@ -82,7 +82,9 @@ async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_main_menu(update, context)
         return ConversationHandler.END
     else:
-        await update.message.reply_text("❌ Noto'g'ri parol! Qaytadan kiriting:")
+        keyboard = [[InlineKeyboardButton("🔙 Ortga qaytish", callback_data="menu_start")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text("❌ Noto'g'ri parol! Qaytadan kiriting yoki ortga qayting:", reply_markup=reply_markup)
         return WAITING_FOR_PASSWORD
 
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -345,8 +347,8 @@ async def check_inventory_logic(message_obj, context):
                 
                 # Jami zaxira
                 stock_qty = odoo.get_total_stock(product_id)
-                # O'rtacha 6 oylik sotuv
-                sales_qty = odoo.get_sales_total_6m(product_id)
+                # O'rtacha 1 oylik (30 kunlik) sotuv
+                sales_qty = odoo.get_sales_total_30d(product_id)
                 
                 reorder_info = calculate_reorder_qty(name, stock_qty, sales_qty)
                 item_data = {
@@ -374,7 +376,7 @@ async def check_inventory_logic(message_obj, context):
             for item in items_to_reorder:
                 msg = f"📦 {item['name']}\n"
                 msg += f"Omborda (B2B): {item['stock_qty']} kg\n"
-                msg += f"6 oylik sotuv: {item['sales_qty']} kg\n"
+                msg += f"1 oylik sotuv: {item['sales_qty']} kg\n"
                 msg += f"❗️ Zakaz qilinishi kerak: {item['reorder_qty']} kg"
                 if item.get('pieces', 0) > 0:
                     msg += f" ({item['pieces']} ta qadoq)"
@@ -457,7 +459,8 @@ def main():
         states={
             WAITING_FOR_PASSWORD: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_password),
-                CallbackQueryHandler(handle_company_selection, pattern='^comp_')
+                CallbackQueryHandler(handle_company_selection, pattern='^comp_'),
+                CallbackQueryHandler(menu_callback, pattern='^menu_')
             ],
             WAITING_FOR_PRODUCT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_product_name)],
             WAITING_FOR_PRODUCT_CONFIRMATION: [CallbackQueryHandler(handle_confirmation)],

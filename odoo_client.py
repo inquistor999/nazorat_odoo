@@ -32,7 +32,7 @@ class OdooClient:
         )
 
     def _find_product(self, name):
-        """Mahsulotni qidirish: 1) to'liq nom, 2) (JAMI) siz, 3) ilike"""
+        """Mahsulotni qidirish: 1) to'liq nom, 2) (JAMI) siz, 3) so'zlarga bo'lib aqlli qidiruv"""
         # 1-urinish: to'liq nom
         result = self._exec('product.product', 'search_read',
             [('name', '=', name)], ['id', 'name', 'uom_id'], limit=1)
@@ -47,9 +47,14 @@ class OdooClient:
             if result:
                 return result[0]
         
-        # 3-urinish: ilike (qisman moslik) - faqat (JAMI) siz variant bilan
+        # 3-urinish: so'zlarga bo'lib qidirish (fuzzy search)
+        words = [w for w in clean.split() if w]
+        domain = []
+        for word in words:
+            domain.append(('name', 'ilike', word))
+            
         result = self._exec('product.product', 'search_read',
-            [('name', 'ilike', clean)], ['id', 'name', 'uom_id'], limit=1)
+            domain, ['id', 'name', 'uom_id'], limit=1)
         return result[0] if result else None
 
     def get_product_info_by_name(self, product_name):

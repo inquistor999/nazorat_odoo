@@ -179,6 +179,77 @@ class OdooClient:
 
         return monthly_sales
 
+    def get_batch_inventory_data(self, product_names, days=30):
+        """
+        Barcha tovarlar uchun zaxira va sotuvlarni bitta (batch) so'rovda oladi.
+        Tezlikni 5-10 barobarga oshiradi.
+        """
+        results = {}
+        pid_to_name = {}
+        
+        # 1. Barcha tovarlarning ID larini topib olamiz
+        for name in product_names:
+            p = self._find_product(name)
+            if p:
+                pid = p['id']
+                pid_to_name[pid] = name
+                results[name] = {
+                    'name': name,
+                    'stock_qty': 0.0,
+                    'sales_qty': 0.0
+                }
+                
+        pids = list(pid_to_name.keys())
+        if not pids:
+            return results
+            
+        # 2. Barcha zaxiralarni bitta so'rov bilan olamiz
+        quant_domain = [
+            ('product_id', 'in', pids),
+            ('location_id.usage', '=', 'internal'),
+            ('location_id.company_id', '=', B2B_COMPANY_ID)
+        ]
+        quants = self._exec('stock.quant', 'search_read', quant_domain, ['product_id', 'quantity'])
+        for q in quants:
+            pid = q['product_id'][0]
+            if pid in pid_to_name:
+                results[pid_to_name[pid]]['stock_qty'] += q.get('quantity', 0.0)
+                
+        # 3. Barcha sotuvlarni bitta so'rov bilan olamiz
+        date_from = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d 00:00:00')
+        sale_domain = [
+            ('product_id', 'in', pids),
+            ('state', 'in', ['sale', 'done']),
+            ('order_id.company_id', '=', B2B_COMPANY_ID),
+            ('order_id.date_order', '>=', date_from)
+        ]
+        sale_lines = self._exec('sale.order.line', 'search_read', sale_domain, ['product_id', 'product_uom_qty'])
+        for s in sale_lines:
+            pid = s['product_id'][0]
+            if pid in pid_to_name:
+                results[pid_to_name[pid]]['sales_qty'] += s.get('product_uom_qty', 0.0)
+                
+        # 4. Barcha transferlarni bitta so'rov bilan olamiz
+        ic_domain = [
+            ('company_from_id', '=', 3),
+            ('state', '=', 'done'),
+            ('scheduled_date', '>=', date_from)
+        ]
+        transfers = self._exec('intercompany.transfer', 'search_read', ic_domain, ['id'])
+        if transfers:
+            tids = [t['id'] for t in transfers]
+            line_domain = [
+                ('transfer_id', 'in', tids),
+                ('product_id', 'in', pids)
+            ]
+            ic_lines = self._exec('intercompany.transfer.line', 'search_read', line_domain, ['product_id', 'quantity'])
+            for il in ic_lines:
+                pid = il['product_id'][0]
+                if pid in pid_to_name:
+                    results[pid_to_name[pid]]['sales_qty'] += il.get('quantity', 0.0)
+                    
+        return results
+
     def get_sales_total_30d(self, product_id):
         """Oxirgi 1 oydagi (30 kun) jami sotuv: B2B prodaja + intercompany transfer"""
         date_from = datetime.now() - timedelta(days=30)

@@ -338,17 +338,16 @@ async def check_inventory_logic(message_obj, context):
         items_to_reorder = []
         all_items = []
         
+        batch_data = odoo.get_batch_inventory_data(product_names, days=30)
+        
         for name in product_names:
             try:
-                product_info = odoo.get_product_info_by_name(name)
-                if not product_info:
+                data = batch_data.get(name)
+                if not data:
                     continue
-                product_id = product_info['id']
-                
-                # Jami zaxira
-                stock_qty = odoo.get_total_stock(product_id)
-                # O'rtacha 1 oylik (30 kunlik) sotuv
-                sales_qty = odoo.get_sales_total_30d(product_id)
+                    
+                stock_qty = data['stock_qty']
+                sales_qty = data['sales_qty']
                 
                 reorder_info = calculate_reorder_qty(name, stock_qty, sales_qty)
                 item_data = {

@@ -149,8 +149,9 @@ async def handle_months(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"⏳ {months} oylik ma'lumotlar yig'ilmoqda. Iltimos biroz kuting, bu bir necha daqiqa olishi mumkin...")
     
     from excel_exporter import generate_monthly_sales_excel
+    import asyncio
     try:
-        excel_file = generate_monthly_sales_excel(comp_id, months, comp_name)
+        excel_file = await asyncio.to_thread(generate_monthly_sales_excel, comp_id, months, comp_name)
         if excel_file:
             await update.message.reply_document(
                 document=excel_file,
@@ -175,8 +176,9 @@ async def handle_product_name(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text("Odoo bazasidan ma'lumot izlanmoqda. Iltimos kuting...")
     
     try:
+        import asyncio
         odoo = OdooClient()
-        matches = odoo.search_products(product_name, limit=20)
+        matches = await asyncio.to_thread(odoo.search_products, product_name, 20)
         
         if not matches:
             keyboard = [[InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]]
@@ -259,10 +261,11 @@ async def send_product_statistics(message_obj, product_id, name):
         pkg_weight_kg = pkg_info['weight_kg']
         is_gram = pkg_info['is_gram']
         
-        # Odoo calls
-        monthly_sales_5m = odoo.get_monthly_sales(product_id, num_months=5)
-        stats = odoo.get_sales_statistics(product_id, num_months=5)
-        purchase_info = odoo.get_last_purchase(product_id)
+        # Odoo calls wrapped in asyncio.to_thread
+        import asyncio
+        monthly_sales_5m = await asyncio.to_thread(odoo.get_monthly_sales, product_id, 5)
+        stats = await asyncio.to_thread(odoo.get_sales_statistics, product_id, 5)
+        purchase_info = await asyncio.to_thread(odoo.get_last_purchase, product_id)
         
         manager_sales = stats['manager_sales']
         total_kg_all_managers = sum(manager_sales.values())
@@ -311,7 +314,7 @@ async def send_product_statistics(message_obj, product_id, name):
             f"{purchase_text}"
         )
         
-        chart_buf = create_sales_history_chart(name, monthly_sales_chart_data)
+        chart_buf = await asyncio.to_thread(create_sales_history_chart, name, monthly_sales_chart_data)
         
         keyboard = [[InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -338,7 +341,8 @@ async def check_inventory_logic(message_obj, context):
         items_to_reorder = []
         all_items = []
         
-        batch_data = odoo.get_batch_inventory_data(product_names, days=30)
+        import asyncio
+        batch_data = await asyncio.to_thread(odoo.get_batch_inventory_data, product_names, 30)
         
         for name in product_names:
             try:
@@ -398,7 +402,8 @@ async def check_inventory_logic(message_obj, context):
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         # Excel faylni yaratish va yuborish
-        excel_file = generate_reorder_excel(all_items)
+        import asyncio
+        excel_file = await asyncio.to_thread(generate_reorder_excel, all_items)
         if excel_file:
             await send_with_retry(lambda: update.callback_query.message.reply_document(
                 document=excel_file,

@@ -146,3 +146,43 @@ def generate_monthly_sales_excel(company_id, months, company_name):
             
     output.seek(0)
     return output
+
+def generate_reorder_excel(items):
+    """
+    Zakaz qilinishi kerak bo'lgan tovarlar ro'yxatini Excelga yozadi.
+    items: dict lardan iborat ro'yxat
+    """
+    if not items:
+        return None
+        
+    records = []
+    for item in items:
+        records.append({
+            'Tovar nomi': item.get('name', ''),
+            'Hozirgi qoldiq (kg)': item.get('stock_qty', 0),
+            '6 Oylik sotuv (kg)': item.get('sales_qty', 0),
+            '1 Oylik o\'rtacha (kg)': round(item.get('sales_qty', 0) / 6, 2),
+            'Qoldiq yetadigan kun (Days Left)': item.get('days_left', 0),
+            'Zakaz miqdori (kg)': item.get('reorder_qty', 0),
+            'Qadoqlar soni': item.get('pieces', 0)
+        })
+        
+    import pandas as pd
+    import io
+    df = pd.DataFrame(records)
+    
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='Zakaz Qilish', index=False)
+        
+        worksheet = writer.sheets['Zakaz Qilish']
+        for idx, col in enumerate(df.columns):
+            max_len = max(
+                df[col].astype(str).map(len).max(),
+                len(col)
+            ) + 2
+            col_letter = chr(65 + idx)
+            worksheet.column_dimensions[col_letter].width = max_len
+            
+    output.seek(0)
+    return output

@@ -8,6 +8,7 @@ from telegram.request import HTTPXRequest
 import config
 from odoo_client import OdooClient
 from analysis import calculate_reorder_qty, create_sales_history_chart, extract_package_info
+from excel_exporter import generate_monthly_sales_excel, generate_reorder_excel
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -333,6 +334,7 @@ async def check_inventory_logic(message_obj, context):
         from odoo_client import OdooClient
         odoo = OdooClient()
         items_to_reorder = []
+        all_items = []
         
         for name in product_names:
             try:
@@ -347,49 +349,64 @@ async def check_inventory_logic(message_obj, context):
                 sales_qty = odoo.get_sales_total_6m(product_id)
                 
                 reorder_info = calculate_reorder_qty(name, stock_qty, sales_qty)
+                item_data = {
+                    'name': name,
+                    'stock_qty': stock_qty,
+                    'sales_qty': sales_qty,
+                    'reorder_qty': reorder_info['reorder_qty'],
+                    'days_left': reorder_info['days_left'],
+                    'pieces': reorder_info.get('pieces', 0)
+                }
+                
+                all_items.append(item_data)
+                
                 if reorder_info['reorder_qty'] > 0:
-                    items_to_reorder.append({
-                        'name': name,
-                        'stock_qty': stock_qty,
-                        'sales_qty': sales_qty,
-                        'reorder_qty': reorder_info['reorder_qty'],
-                        'days_left': reorder_info['days_left'],
-                        'pieces': reorder_info.get('pieces', 0)
-                    })
+                    items_to_reorder.append(item_data)
+                    
             except Exception as e:
                 logging.error(f"{name} xato: {e}")
                 
         if not items_to_reorder:
-            keyboard = [[InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]]
-            await message_obj.reply_text("🎉 Hamma tovarlar yetarli darajada! Zakaz qilishga ehtiyoj yo'q.", reply_markup=InlineKeyboardMarkup(keyboard))
-            return
+            await message_obj.reply_text("🎉 Hamma tovarlar yetarli darajada! Zakaz qilishga ehtiyoj yo'q (Lekin hisobotni quyidagi Excel orqali ko'rishingiz mumkin).")
+        else:
+            # Format the text
+            lines = ["⚠️ <b>Zakaz qilinishi kerak bo'lgan tovarlar:</b>\n"]
+            for item in items_to_reorder:
+                msg = f"📦 {item['name']}\n"
+                msg += f"Omborda (B2B): {item['stock_qty']} kg\n"
+                msg += f"6 oylik sotuv: {item['sales_qty']} kg\n"
+                msg += f"❗️ Zakaz qilinishi kerak: {item['reorder_qty']} kg"
+                if item.get('pieces', 0) > 0:
+                    msg += f" ({item['pieces']} ta qadoq)"
+                lines.append(msg)
+                
+            full_text = "\n\n".join(lines)
             
-        # Format the text
-        lines = ["⚠️ <b>Zakaz qilinishi kerak bo'lgan tovarlar:</b>\n"]
-        for item in items_to_reorder:
-            msg = f"📦 {item['name']}\n"
-            msg += f"Omborda (B2B): {item['stock_qty']} kg\n"
-            msg += f"6 oylik sotuv: {item['sales_qty']} kg\n"
-            msg += f"❗️ Zakaz qilinishi kerak: {item['reorder_qty']} kg"
-            if item.get('pieces', 0) > 0:
-                msg += f" ({item['pieces']} ta qadoq)"
-            lines.append(msg)
+            # Max message length is 4096, handle if too long
+            if len(full_text) > 4000:
+                parts = [full_text[i:i+4000] for i in range(0, len(full_text), 4000)]
+                for i, part in enumerate(parts):
+                    if i == len(parts) - 1:
+                        await send_with_retry(lambda: message_obj.reply_text(part, parse_mode='HTML'))
+                    else:
+                        await send_with_retry(lambda: message_obj.reply_text(part, parse_mode='HTML'))
+            else:
+                await send_with_retry(lambda: message_obj.reply_text(full_text, parse_mode='HTML'))
             
-        full_text = "\n\n".join(lines)
-        
         keyboard = [[InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # Max message length is 4096, handle if too long
-        if len(full_text) > 4000:
-            parts = [full_text[i:i+4000] for i in range(0, len(full_text), 4000)]
-            for i, part in enumerate(parts):
-                if i == len(parts) - 1:
-                    await send_with_retry(lambda: message_obj.reply_text(part, parse_mode='HTML', reply_markup=reply_markup))
-                else:
-                    await send_with_retry(lambda: message_obj.reply_text(part, parse_mode='HTML'))
+        # Excel faylni yaratish va yuborish
+        excel_file = generate_reorder_excel(all_items)
+        if excel_file:
+            await send_with_retry(lambda: update.callback_query.message.reply_document(
+                document=excel_file,
+                filename="Zakaz_Ro'yxati.xlsx",
+                caption="Excel formatdagi barcha tovarlar hisoboti",
+                reply_markup=reply_markup
+            ))
         else:
-            await send_with_retry(lambda: message_obj.reply_text(full_text, parse_mode='HTML', reply_markup=reply_markup))
+            await send_with_retry(lambda: message_obj.reply_text("Hech qanday ma'lumot topilmadi.", reply_markup=reply_markup))
 
     except Exception as e:
         logging.error(f"Xatolik: {e}", exc_info=True)

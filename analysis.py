@@ -17,20 +17,29 @@ def extract_package_info(product_name):
         
     return {'weight_kg': 1.0, 'is_gram': False}
 
-def calculate_reorder_qty(product_name, current_stock, sales_last_90_days, lead_time_days=3, target_days=30):
+def calculate_reorder_qty(product_name, current_stock, sales_last_180_days, lead_time_days=3, target_days=30):
     """
     Zakaz miqdorini hisoblaydigan funksiya.
     lead_time_days: Zakaz yetib kelishiga ketadigan vaqt (masalan, 3 kun)
     target_days: Bizga qancha vaqtga yetadigan zaxira kerak? (masalan, 1 oy = 30 kun)
     """
-    # Oxirgi 3 oydagi o'rtacha kunlik sotuv
-    daily_sales = sales_last_90_days / 90 if sales_last_90_days > 0 else 0
+    # Maxsus qoida: Vazelin Torto uchun doimiy minimum 500 kg qoldiq talab qilinadi.
+    if 'vazelin torto' in product_name.lower():
+        needed_for_period = 500.0
+        reorder_qty = needed_for_period - current_stock if current_stock < needed_for_period else 0
+        daily_sales = 0
+    else:
+        # Oxirgi 6 oydagi o'rtacha kunlik sotuv
+        daily_sales = sales_last_180_days / 180 if sales_last_180_days > 0 else 0
+        
+        # Kelgusi (30 kun + 3 kun yetkazish) uchun jami qancha tovar kerak?
+        needed_for_period = daily_sales * (target_days + lead_time_days)
+        
+        # Qancha zakaz qilish kerak (kerakli miqdordan hozirgi zaxirani ayiramiz)
+        reorder_qty = needed_for_period - current_stock
     
-    # Kelgusi (30 kun + yetkazish vaqti) uchun jami qancha tovar kerak?
-    needed_for_period = daily_sales * (target_days + lead_time_days)
-    
-    # Qancha zakaz qilish kerak (kerakli miqdordan hozirgi zaxirani ayiramiz)
-    reorder_qty = needed_for_period - current_stock
+    # Omborda qancha kunga yetadigan zaxira bor
+    days_left = current_stock / daily_sales if daily_sales > 0 else 999
     
     # Qadoq og'irligini aniqlash va shunga karrali qilib yaxlitlash
     pkg_info = extract_package_info(product_name)
@@ -48,7 +57,8 @@ def calculate_reorder_qty(product_name, current_stock, sales_last_90_days, lead_
         'needed_for_period': round(needed_for_period, 2),
         'reorder_qty': reorder_qty_kg,
         'pieces': pieces,
-        'is_gram': pkg_info['is_gram']
+        'is_gram': pkg_info['is_gram'],
+        'days_left': round(days_left)
     }
 
 def create_sales_history_chart(product_name, monthly_sales):

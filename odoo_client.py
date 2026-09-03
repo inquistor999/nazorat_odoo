@@ -126,24 +126,27 @@ class OdooClient:
         B2B -> Urikzor yoki B2B -> Qo'qon (bajarilgan transferlar).
         """
         domain = [
-            ('product_id', '=', product_id),
+            ('company_from_id', '=', 3),  # B2B
             ('state', '=', 'done'),
-            ('location_id', 'in', B2B_LOC_IDS),         # manba: B2B ombori
-            ('date', '>=', date_from.strftime('%Y-%m-%d 00:00:00')),
+            ('scheduled_date', '>=', date_from.strftime('%Y-%m-%d 00:00:00')),
         ]
         if date_to:
-            domain.append(('date', '<', date_to.strftime('%Y-%m-%d 00:00:00')))
+            domain.append(('scheduled_date', '<', date_to.strftime('%Y-%m-%d 00:00:00')))
+            
+        transfers = self._exec('intercompany.transfer', 'search_read', domain, ['id'])
+        if not transfers:
+            return 0.0
+            
+        transfer_ids = [t['id'] for t in transfers]
         
-        move_lines = self._exec('stock.move.line', 'search_read',
-            domain, ['qty_done', 'location_dest_id']
-        )
+        line_domain = [
+            ('transfer_id', 'in', transfer_ids),
+            ('product_id', '=', product_id)
+        ]
         
-        # Faqat B2B omboridan TASHQARIGA ketgan harakatlar (intercompany)
-        total = 0
-        for line in move_lines:
-            dest_loc_id = line['location_dest_id'][0] if line.get('location_dest_id') else None
-            if dest_loc_id and dest_loc_id not in B2B_LOC_IDS:
-                total += line.get('qty_done', 0)
+        lines = self._exec('intercompany.transfer.line', 'search_read', line_domain, ['quantity'])
+        
+        total = sum(line.get('quantity', 0) for line in lines)
         return round(total, 2)
 
     def get_monthly_sales(self, product_id, num_months=3):
@@ -176,9 +179,9 @@ class OdooClient:
 
         return monthly_sales
 
-    def get_sales_total_90d(self, product_id):
-        """Oxirgi 90 kundagi jami sotuv: B2B prodaja + intercompany transfer"""
-        date_from = datetime.now() - timedelta(days=90)
+    def get_sales_total_6m(self, product_id):
+        """Oxirgi 6 oydagi (180 kun) jami sotuv: B2B prodaja + intercompany transfer"""
+        date_from = datetime.now() - timedelta(days=180)
         sale_qty = self._get_sale_order_qty(product_id, date_from)
         transfer_qty = self._get_intercompany_transfer_qty(product_id, date_from)
         return round(sale_qty + transfer_qty, 2)

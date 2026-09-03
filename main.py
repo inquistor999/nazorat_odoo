@@ -343,17 +343,18 @@ async def check_inventory_logic(message_obj, context):
                 
                 # Jami zaxira
                 stock_qty = odoo.get_total_stock(product_id)
-                # O'rtacha 90 kunlik sotuv
-                sales_qty = odoo.get_sales_total_90d(product_id)
+                # O'rtacha 6 oylik sotuv
+                sales_qty = odoo.get_sales_total_6m(product_id)
                 
-                reorder_info = calculate_reorder_qty(stock_qty, sales_qty)
-                if reorder_info['needs_reorder']:
+                reorder_info = calculate_reorder_qty(name, stock_qty, sales_qty)
+                if reorder_info['reorder_qty'] > 0:
                     items_to_reorder.append({
                         'name': name,
                         'stock_qty': stock_qty,
                         'sales_qty': sales_qty,
                         'reorder_qty': reorder_info['reorder_qty'],
-                        'days_left': reorder_info['days_left']
+                        'days_left': reorder_info['days_left'],
+                        'pieces': reorder_info.get('pieces', 0)
                     })
             except Exception as e:
                 logging.error(f"{name} xato: {e}")
@@ -366,12 +367,13 @@ async def check_inventory_logic(message_obj, context):
         # Format the text
         lines = ["⚠️ <b>Zakaz qilinishi kerak bo'lgan tovarlar:</b>\n"]
         for item in items_to_reorder:
-            lines.append(
-                f"📦 <b>{item['name']}</b>\n"
-                f"   Omborda qolgan: {item['stock_qty']} kg\n"
-                f"   90 kunlik sotuv: {item['sales_qty']} kg\n"
-                f"   <b>Zakaz berish: {item['reorder_qty']} kg</b> <i>(Yana ~{item['days_left']} kunga yetadi)</i>"
-            )
+            msg = f"📦 {item['name']}\n"
+            msg += f"Omborda (B2B): {item['stock_qty']} kg\n"
+            msg += f"6 oylik sotuv: {item['sales_qty']} kg\n"
+            msg += f"❗️ Zakaz qilinishi kerak: {item['reorder_qty']} kg"
+            if item.get('pieces', 0) > 0:
+                msg += f" ({item['pieces']} ta qadoq)"
+            lines.append(msg)
             
         full_text = "\n\n".join(lines)
         

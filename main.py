@@ -358,6 +358,9 @@ async def check_inventory_logic(message_obj, context):
                     'name': name,
                     'stock_qty': stock_qty,
                     'sales_qty': sales_qty,
+                    'sales_b2b': data.get('sales_b2b', 0.0),
+                    'transfer_urikzor': data.get('transfer_urikzor', 0.0),
+                    'transfer_qoqon': data.get('transfer_qoqon', 0.0),
                     'reorder_qty': reorder_info['reorder_qty'],
                     'days_left': reorder_info['days_left'],
                     'pieces': reorder_info.get('pieces', 0)
@@ -372,32 +375,8 @@ async def check_inventory_logic(message_obj, context):
                 logging.error(f"{name} xato: {e}")
                 
         if not items_to_reorder:
-            await message_obj.reply_text("🎉 Hamma tovarlar yetarli darajada! Zakaz qilishga ehtiyoj yo'q (Lekin hisobotni quyidagi Excel orqali ko'rishingiz mumkin).")
-        else:
-            # Format the text
-            lines = ["⚠️ <b>Zakaz qilinishi kerak bo'lgan tovarlar:</b>\n"]
-            for item in items_to_reorder:
-                msg = f"📦 {item['name']}\n"
-                msg += f"Omborda (B2B): {item['stock_qty']} kg\n"
-                msg += f"1 oylik sotuv: {item['sales_qty']} kg\n"
-                msg += f"❗️ Zakaz qilinishi kerak: {item['reorder_qty']} kg"
-                if item.get('pieces', 0) > 0:
-                    msg += f" ({item['pieces']} ta qadoq)"
-                lines.append(msg)
-                
-            full_text = "\n\n".join(lines)
-            
-            # Max message length is 4096, handle if too long
-            if len(full_text) > 4000:
-                parts = [full_text[i:i+4000] for i in range(0, len(full_text), 4000)]
-                for i, part in enumerate(parts):
-                    if i == len(parts) - 1:
-                        await send_with_retry(lambda: message_obj.reply_text(part, parse_mode='HTML'))
-                    else:
-                        await send_with_retry(lambda: message_obj.reply_text(part, parse_mode='HTML'))
-            else:
-                await send_with_retry(lambda: message_obj.reply_text(full_text, parse_mode='HTML'))
-            
+            await send_with_retry(lambda: message_obj.reply_text("🎉 Hamma tovarlar yetarli darajada! Zakaz qilishga ehtiyoj yo'q (Lekin hisobotni quyidagi Excel orqali ko'rishingiz mumkin)."))
+        
         keyboard = [[InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -408,8 +387,9 @@ async def check_inventory_logic(message_obj, context):
             await send_with_retry(lambda: update.callback_query.message.reply_document(
                 document=excel_file,
                 filename="Zakaz_Ro'yxati.xlsx",
-                caption="Excel formatdagi barcha tovarlar hisoboti",
-                reply_markup=reply_markup
+                caption="📊 <b>Barcha tovarlar hisoboti (Excel)</b>\n\nQuyidagi faylda barcha tovarlarning:\n🔹 Hozirgi qoldig'i\n🔹 O'rikzor, Qo'qon va B2B sotuvlari (1 oylik)\n🔹 Qoldiq necha kunga yetishi\n🔹 Qancha zakaz qilish kerakligi batafsil yozilgan.",
+                reply_markup=reply_markup,
+                parse_mode='HTML'
             ))
         else:
             await send_with_retry(lambda: message_obj.reply_text("Hech qanday ma'lumot topilmadi.", reply_markup=reply_markup))

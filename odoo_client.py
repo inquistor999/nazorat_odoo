@@ -196,7 +196,10 @@ class OdooClient:
                 results[name] = {
                     'name': name,
                     'stock_qty': 0.0,
-                    'sales_qty': 0.0
+                    'sales_qty': 0.0,
+                    'sales_b2b': 0.0,
+                    'transfer_urikzor': 0.0,
+                    'transfer_qoqon': 0.0
                 }
                 
         pids = list(pid_to_name.keys())
@@ -227,7 +230,9 @@ class OdooClient:
         for s in sale_lines:
             pid = s['product_id'][0]
             if pid in pid_to_name:
-                results[pid_to_name[pid]]['sales_qty'] += s.get('product_uom_qty', 0.0)
+                qty = s.get('product_uom_qty', 0.0)
+                results[pid_to_name[pid]]['sales_qty'] += qty
+                results[pid_to_name[pid]]['sales_b2b'] += qty
                 
         # 4. Barcha transferlarni bitta so'rov bilan olamiz
         ic_domain = [
@@ -235,18 +240,32 @@ class OdooClient:
             ('state', '=', 'done'),
             ('scheduled_date', '>=', date_from)
         ]
-        transfers = self._exec('intercompany.transfer', 'search_read', ic_domain, ['id'])
+        transfers = self._exec('intercompany.transfer', 'search_read', ic_domain, ['id', 'company_to_id'])
         if transfers:
             tids = [t['id'] for t in transfers]
+            
+            transfer_dest = {}
+            for t in transfers:
+                if t.get('company_to_id'):
+                    transfer_dest[t['id']] = t['company_to_id'][0]
+                    
             line_domain = [
                 ('transfer_id', 'in', tids),
                 ('product_id', 'in', pids)
             ]
-            ic_lines = self._exec('intercompany.transfer.line', 'search_read', line_domain, ['product_id', 'quantity'])
+            ic_lines = self._exec('intercompany.transfer.line', 'search_read', line_domain, ['product_id', 'quantity', 'transfer_id'])
             for il in ic_lines:
                 pid = il['product_id'][0]
                 if pid in pid_to_name:
-                    results[pid_to_name[pid]]['sales_qty'] += il.get('quantity', 0.0)
+                    qty = il.get('quantity', 0.0)
+                    results[pid_to_name[pid]]['sales_qty'] += qty
+                    
+                    tid = il['transfer_id'][0]
+                    dest_id = transfer_dest.get(tid)
+                    if dest_id == 2:
+                        results[pid_to_name[pid]]['transfer_urikzor'] += qty
+                    elif dest_id == 4:
+                        results[pid_to_name[pid]]['transfer_qoqon'] += qty
                     
         return results
 

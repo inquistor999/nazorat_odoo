@@ -1,5 +1,4 @@
 import logging
-import datetime
 import os
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -15,8 +14,10 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-WAITING_FOR_PRODUCT_NAME = 1
-WAITING_FOR_PRODUCT_CONFIRMATION = 2
+WAITING_FOR_PASSWORD = 1
+WAITING_FOR_PRODUCT_NAME = 2
+WAITING_FOR_PRODUCT_CONFIRMATION = 3
+WAITING_FOR_MONTHS = 4
 
 async def send_with_retry(send_func, retries=3, delay=3):
     import asyncio
@@ -31,10 +32,11 @@ async def send_with_retry(send_func, retries=3, delay=3):
                 raise
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/start bosilganda salomlashish va menyu chiqarish"""
+    """/start bosilganda kompaniya tanlash menyusi"""
     keyboard = [
-        [InlineKeyboardButton("Tortilib qolgan tovarlar", callback_data="menu_check_inventory")],
-        [InlineKeyboardButton("Tovar statistikasi", callback_data="menu_product_stats")]
+        [InlineKeyboardButton("🏢 B2B", callback_data="comp_3")],
+        [InlineKeyboardButton("🏪 O'rikzor", callback_data="comp_2")],
+        [InlineKeyboardButton("🏬 Qo'qon", callback_data="comp_4")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -42,7 +44,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         f"👋 <b>Salom {user_name}! Xush kelibsiz.</b>\n\n"
         "🤖 <i>Men sizning shaxsiy Odoo yordamchingizman.</i>\n"
-        "👇 Iltimos, quyidagi menyudan kerakli bo'limni tanlang:"
+        "👇 Iltimos, hisobot olish uchun filialni tanlang:"
     )
     
     if update.message:
@@ -50,132 +52,122 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif update.callback_query:
         await update.callback_query.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode='HTML')
         
-    return ConversationHandler.END
+    return WAITING_FOR_PASSWORD
+
+async def handle_company_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    comp_id = int(query.data.split('_')[1])
+    context.user_data['selected_company'] = comp_id
+    
+    comp_names = {3: 'B2B', 2: "O'rikzor", 4: "Qo'qon"}
+    context.user_data['company_name'] = comp_names.get(comp_id, "Noma'lum")
+    
+    await query.message.edit_text(f"🔒 <b>{comp_names[comp_id]}</b> filiali uchun parolni kiriting:", parse_mode='HTML')
+    return WAITING_FOR_PASSWORD
+
+async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    password = update.message.text
+    comp_id = context.user_data.get('selected_company')
+    
+    passwords = {
+        3: '9706500',
+        2: 'shovkat123',
+        4: 'zafar123'
+    }
+    
+    if password == passwords.get(comp_id):
+        await show_main_menu(update, context)
+        return ConversationHandler.END
+    else:
+        await update.message.reply_text("❌ Noto'g'ri parol! Qaytadan kiriting:")
+        return WAITING_FOR_PASSWORD
+
+async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    comp_id = context.user_data.get('selected_company')
+    comp_name = context.user_data.get('company_name')
+    
+    if comp_id == 3: # B2B
+        keyboard = [
+            [InlineKeyboardButton("📦 Tortilib qolgan tovarlar", callback_data="menu_check_inventory")],
+            [InlineKeyboardButton("📊 Tovar statistikasi", callback_data="menu_product_stats")]
+        ]
+    else: # O'rikzor, Qo'qon
+        keyboard = [
+            [InlineKeyboardButton("📅 Oylik statistika (Excel)", callback_data="menu_monthly_stats")]
+        ]
+        
+    # Orqaga qaytish (Kompaniya tanlashga)
+    keyboard.append([InlineKeyboardButton("🔙 Boshqa filialni tanlash", callback_data="menu_start")])
+        
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    text = f"✅ Parol qabul qilindi.\n\n<b>{comp_name}</b> filiali menyusi:"
+    
+    if update.message:
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='HTML')
+    else:
+        await update.callback_query.message.reply_text(text, reply_markup=reply_markup, parse_mode='HTML')
 
 async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
+    if query.data == "menu_start":
+        return await start(update, context)
+        
+    if query.data == "menu_back":
+        await show_main_menu(update, context)
+        return ConversationHandler.END
+        
     if query.data == "menu_check_inventory":
+        # Eski logikani chaqirish (faylda)
         await check_inventory_logic(query.message, context)
         return ConversationHandler.END
-    elif query.data == "menu_product_stats":
-        await query.message.reply_text("Menga tovar to'liq nomini yuboring:")
+        
+    if query.data == "menu_product_stats":
+        await query.message.reply_text("Qidirmoqchi bo'lgan tovaringiz nomini yozing:")
         return WAITING_FOR_PRODUCT_NAME
-    elif query.data == "menu_back":
-        await start(update, context)
-        return ConversationHandler.END
-    elif query.data == "make_order":
-        order_list_text = context.user_data.get('order_list', [])
-        today = datetime.datetime.now().strftime("%d.%m.%Y")
-        final_msg = f"Zakaz : {today}\n" + "\n".join(order_list_text)
-        await query.edit_message_text(text=final_msg)
-        return ConversationHandler.END
+        
+    if query.data == "menu_monthly_stats":
+        await query.message.reply_text("Necha oylik statistika kerak? Raqam kiriting (masalan: 4):")
+        return WAITING_FOR_MONTHS
 
-async def check_inventory_logic(message, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = message.chat_id
-    await message.reply_text(
-        "Odoo bazasiga ulanmoqda va tovarlar tahlil qilinmoqda...\n"
-        "Bu bir necha daqiqa olishi mumkin, iltimos kuting."
-    )
-
+async def handle_months(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    if not text.isdigit():
+        await update.message.reply_text("❌ Iltimos, faqat raqam kiriting (masalan: 4):")
+        return WAITING_FOR_MONTHS
+        
+    months = int(text)
+    comp_id = context.user_data.get('selected_company')
+    comp_name = context.user_data.get('company_name')
+    
+    await update.message.reply_text(f"⏳ {months} oylik ma'lumotlar yig'ilmoqda. Iltimos biroz kuting, bu bir necha daqiqa olishi mumkin...")
+    
+    from excel_exporter import generate_monthly_sales_excel
     try:
-        odoo = OdooClient()
-        tracked_products = config.get_tracked_product_names()
-        if not tracked_products:
-            await message.reply_text("Kuzatiladigan tovarlar ro'yxati (tracked_products.txt) bo'sh yoki topilmadi.")
-            return
-
-        order_list_text = []
-
-        for product_name in tracked_products:
-            product_info = odoo.get_product_info_by_name(product_name)
-            if not product_info:
-                logging.info(f"Topilmadi (o'tkazildi): {product_name}")
-                continue
-
-            name = product_info['name']
-            product_id = product_info['id']
-            current_stock = round(product_info['qty_available'], 2)
-
-            monthly_sales = odoo.get_monthly_sales(product_id, num_months=3)
-            sales_90d = odoo.get_sales_total_90d(product_id)
-
-            pkg_info = extract_package_info(name)
-
-            if pkg_info['is_gram']:
-                pkg_weight_kg = pkg_info['weight_kg']
-                monthly_sales_display = {}
-                for m, dona_qty in monthly_sales.items():
-                    kg_qty = round(dona_qty * pkg_weight_kg, 2)
-                    monthly_sales_display[m] = f"{int(dona_qty)} sht ({kg_qty} kg)"
-                sales_90d_kg = sales_90d * pkg_weight_kg
-                monthly_sales_chart = {m: round(v * pkg_weight_kg, 2) for m, v in monthly_sales.items()}
-            else:
-                monthly_sales_display = {m: f"{v} kg" for m, v in monthly_sales.items()}
-                sales_90d_kg = sales_90d
-                monthly_sales_chart = monthly_sales
-
-            analysis = calculate_reorder_qty(name, current_stock, sales_90d_kg)
-            reorder_qty = analysis['reorder_qty']
-            pieces = analysis.get('pieces', 0)
-
-            if reorder_qty > 0:
-                if pieces > 0:
-                    reorder_text = f"{reorder_qty} kg ({pieces} sht)"
-                else:
-                    reorder_text = f"{reorder_qty} kg"
-
-                months_text = "".join([f"{m} - {v}\n" for m, v in monthly_sales_display.items()])
-
-                msg = (
-                    f"📦 <b>Zakaz berish kerak:</b> {name}\n\n"
-                    f"📊 <b>Hozirgi qoldiq:</b> {current_stock} kg\n"
-                    f"📈 <b>O'rtacha kunlik sotuv:</b> {analysis['daily_sales']} kg\n\n"
-                    f"📅 <b>Oxirgi 3 oy natijasi:</b>\n"
-                    f"<i>{months_text}</i>\n"
-                    f"🚚 <i>(2 kunlik yo'l va 1 oylik zaxira uchun)</i>\n\n"
-                    f"🛒 <b>Tavsiya etiladigan zakaz miqdori:</b>\n"
-                    f"👉 <b>{reorder_text}</b> 👈"
-                )
-
-                chart_buf = create_sales_history_chart(name, monthly_sales_chart)
-                async def send_photo(c=chat_id, buf=chart_buf, m=msg):
-                    return await context.bot.send_photo(chat_id=c, photo=buf, caption=m, parse_mode='HTML')
-                await send_with_retry(send_photo)
-                order_list_text.append(f"{name} - {reorder_text}")
-
-        if order_list_text:
-            context.user_data['order_list'] = order_list_text
-            keyboard = [
-                [InlineKeyboardButton("ZAKAZ BERISH", callback_data="make_order")],
-                [InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"Tahlil tugadi. Jami {len(order_list_text)} ta tovardan zakaz berish kerak.",
-                reply_markup=reply_markup
+        excel_file = generate_monthly_sales_excel(comp_id, months, comp_name)
+        if excel_file:
+            await update.message.reply_document(
+                document=excel_file,
+                filename=f"{comp_name}_{months}_oylik_statistika.xlsx",
+                caption=f"📊 <b>{comp_name}</b> filialining oxirgi {months} oy ichidagi barcha sotuvlar statistikasi.",
+                parse_mode='HTML'
             )
         else:
-            keyboard = [[InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="Barcha tovarlar yetarli! Hozircha zakaz berish shart emas.",
-                reply_markup=reply_markup
-            )
-
+            await update.message.reply_text(f"Oxirgi {months} oy ichida hech qanday sotuv topilmadi.")
     except Exception as e:
-        logging.error(f"Xatolik: {e}", exc_info=True)
-        await message.reply_text(
-            f"Xatolik yuz berdi: {str(e)}\n\n"
-            "Odoo manzili va login parolingizni tekshiring."
-        )
+        logging.error(f"Excel yaratishda xato: {e}", exc_info=True)
+        await update.message.reply_text("Xatolik yuz berdi. Iltimos qaytadan urinib ko'ring.")
+        
+    await show_main_menu(update, context)
+    return ConversationHandler.END
+
+# ----------------- B2B Tovar qidirish logikasi -----------------
 
 async def handle_product_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     product_name = update.message.text
-    chat_id = update.message.chat_id
     
     await update.message.reply_text("Odoo bazasidan ma'lumot izlanmoqda. Iltimos kuting...")
     
@@ -241,7 +233,7 @@ async def handle_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
     
     if query.data == "menu_back":
-        await start(update, context)
+        await show_main_menu(update, context)
         return ConversationHandler.END
         
     if query.data == "confirm_no":
@@ -269,7 +261,6 @@ async def send_product_statistics(message_obj, product_id, name):
         stats = odoo.get_sales_statistics(product_id, num_months=5)
         purchase_info = odoo.get_last_purchase(product_id)
         
-        # 1. Manager sales text
         manager_sales = stats['manager_sales']
         total_kg_all_managers = sum(manager_sales.values())
         if is_gram:
@@ -280,7 +271,6 @@ async def send_product_statistics(message_obj, product_id, name):
             mgr_kg = qty * pkg_weight_kg if is_gram else qty
             manager_text += f"  👤 {mgr} <i>({round(mgr_kg, 2)}kg)</i>\n"
             
-        # 2. Monthly sales formatting
         monthly_text = "📅 <b>Oyma-oy sotuvlar (5 oy):</b>\n"
         monthly_sales_chart_data = {}
         for m, qty in monthly_sales_5m.items():
@@ -288,7 +278,6 @@ async def send_product_statistics(message_obj, product_id, name):
             monthly_text += f"  🔹 {m} - <b>{kg_qty} kg</b>\n"
             monthly_sales_chart_data[m] = kg_qty
             
-        # 3. Min / Max price
         min_price = stats.get('min_price')
         max_price = stats.get('max_price')
         min_order = stats.get('min_order', "")
@@ -300,7 +289,6 @@ async def send_product_statistics(message_obj, product_id, name):
         if max_price is not None:
             price_text += f"  ⬆️ Eng qimmat: <b>{max_price} $</b> <i>({max_order})</i>\n"
             
-        # 4. Last purchase
         purchase_text = "🚚 <b>Kirim ma'lumoti:</b>\n"
         if purchase_info:
             p_qty = purchase_info['qty']
@@ -312,7 +300,6 @@ async def send_product_statistics(message_obj, product_id, name):
         else:
             purchase_text += "  ⚠️ Prixod qilingani haqida ma'lumot topilmadi.\n"
             
-        # Combine everything
         final_msg = (
             f"📊 <b><u>{name}</u> statistikasi</b> (oxirgi 5 oy)\n\n"
             f"{manager_text}\n"
@@ -332,6 +319,81 @@ async def send_product_statistics(message_obj, product_id, name):
         keyboard = [[InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await message_obj.reply_text(f"Xatolik yuz berdi: {str(e)}", reply_markup=reply_markup)
+
+
+# ----------------- Inventory Logic (Old method) -----------------
+async def check_inventory_logic(message_obj, context):
+    await message_obj.reply_text("Odoo bazasidan barcha mahsulotlar ma'lumotlari yuklanmoqda... Bu bir necha daqiqa vaqt olishi mumkin.")
+    try:
+        product_names = config.get_tracked_product_names()
+        if not product_names:
+            await message_obj.reply_text("Kuzatiladigan tovarlar ro'yxati bo'sh!")
+            return
+
+        from odoo_client import OdooClient
+        odoo = OdooClient()
+        items_to_reorder = []
+        
+        for name in product_names:
+            try:
+                product_info = odoo.get_product_info_by_name(name)
+                if not product_info:
+                    continue
+                product_id = product_info['id']
+                
+                # Jami zaxira
+                stock_qty = odoo.get_total_stock(product_id)
+                # O'rtacha 90 kunlik sotuv
+                sales_qty = odoo.get_sales_total_90d(product_id)
+                
+                reorder_info = calculate_reorder_qty(stock_qty, sales_qty)
+                if reorder_info['needs_reorder']:
+                    items_to_reorder.append({
+                        'name': name,
+                        'stock_qty': stock_qty,
+                        'sales_qty': sales_qty,
+                        'reorder_qty': reorder_info['reorder_qty'],
+                        'days_left': reorder_info['days_left']
+                    })
+            except Exception as e:
+                logging.error(f"{name} xato: {e}")
+                
+        if not items_to_reorder:
+            keyboard = [[InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]]
+            await message_obj.reply_text("🎉 Hamma tovarlar yetarli darajada! Zakaz qilishga ehtiyoj yo'q.", reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+            
+        # Format the text
+        lines = ["⚠️ <b>Zakaz qilinishi kerak bo'lgan tovarlar:</b>\n"]
+        for item in items_to_reorder:
+            lines.append(
+                f"📦 <b>{item['name']}</b>\n"
+                f"   Omborda qolgan: {item['stock_qty']} kg\n"
+                f"   90 kunlik sotuv: {item['sales_qty']} kg\n"
+                f"   <b>Zakaz berish: {item['reorder_qty']} kg</b> <i>(Yana ~{item['days_left']} kunga yetadi)</i>"
+            )
+            
+        full_text = "\n\n".join(lines)
+        
+        keyboard = [[InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Max message length is 4096, handle if too long
+        if len(full_text) > 4000:
+            parts = [full_text[i:i+4000] for i in range(0, len(full_text), 4000)]
+            for i, part in enumerate(parts):
+                if i == len(parts) - 1:
+                    await send_with_retry(lambda: message_obj.reply_text(part, parse_mode='HTML', reply_markup=reply_markup))
+                else:
+                    await send_with_retry(lambda: message_obj.reply_text(part, parse_mode='HTML'))
+        else:
+            await send_with_retry(lambda: message_obj.reply_text(full_text, parse_mode='HTML', reply_markup=reply_markup))
+
+    except Exception as e:
+        logging.error(f"Xatolik: {e}", exc_info=True)
+        keyboard = [[InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]]
+        await message_obj.reply_text(f"Tizimda xatolik yuz berdi: {str(e)}", reply_markup=InlineKeyboardMarkup(keyboard))
+
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Amaliyot bekor qilindi. /start ni bosing.")
@@ -370,19 +432,23 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
-            CallbackQueryHandler(menu_callback, pattern='^menu_')
+            CallbackQueryHandler(menu_callback, pattern='^menu_'),
+            CallbackQueryHandler(handle_company_selection, pattern='^comp_')
         ],
         states={
+            WAITING_FOR_PASSWORD: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_password),
+                CallbackQueryHandler(handle_company_selection, pattern='^comp_')
+            ],
             WAITING_FOR_PRODUCT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_product_name)],
-            WAITING_FOR_PRODUCT_CONFIRMATION: [CallbackQueryHandler(handle_confirmation)]
+            WAITING_FOR_PRODUCT_CONFIRMATION: [CallbackQueryHandler(handle_confirmation)],
+            WAITING_FOR_MONTHS: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_months)],
         },
         fallbacks=[CommandHandler('cancel', cancel), CommandHandler('start', start)]
     )
 
     application.add_handler(conv_handler)
-    application.add_handler(CommandHandler("check", lambda u, c: check_inventory_logic(u.message, c)))
-    application.add_handler(CallbackQueryHandler(menu_callback, pattern='^make_order$'))
-
+    
     print("Bot ishga tushdi! Telegramdan /start yuboring.")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 

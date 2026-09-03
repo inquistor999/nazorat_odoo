@@ -43,10 +43,14 @@ def generate_monthly_sales_excel(company_id, months, company_name):
     # Katta datani bittada olish
     order_lines = odoo._exec('sale.order.line', 'search_read', 
                              domain, 
-                             ['product_id', 'product_uom_qty', 'price_unit', 'order_id'])
+                             ['product_id', 'product_uom_qty', 'price_unit', 'order_id', 'currency_id'])
     
     if not order_lines:
         return None
+        
+    # UZS kursini Odoo dan olib kelamiz
+    currencies = odoo._exec('res.currency', 'search_read', [('name', '=', 'UZS')], ['rate'])
+    uzs_rate = currencies[0]['rate'] if currencies and currencies[0].get('rate') else 12500.0
         
     # 3. Odoo'dan har bir buyurtma sanasini tortib olish (chunki sale.order.line da date_order yo'q)
     order_ids = list(set(line['order_id'][0] for line in order_lines if line.get('order_id')))
@@ -66,6 +70,11 @@ def generate_monthly_sales_excel(company_id, months, company_name):
         
         qty = line.get('product_uom_qty', 0)
         price_unit = line.get('price_unit', 0)
+        
+        # Agar narx So'mda (UZS) bo'lsa, Dollarga ($) aylantiramiz
+        currency = line.get('currency_id')
+        if currency and isinstance(currency, list) and len(currency) > 1 and currency[1] == 'UZS':
+            price_unit = price_unit / uzs_rate
         
         # Kg hisobi
         pkg = extract_package_info(prod_name)

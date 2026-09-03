@@ -16,6 +16,7 @@ logging.basicConfig(
 )
 
 WAITING_FOR_PRODUCT_NAME = 1
+WAITING_FOR_PRODUCT_CONFIRMATION = 2
 
 async def send_with_retry(send_func, retries=3, delay=3):
     import asyncio
@@ -180,13 +181,85 @@ async def handle_product_name(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     try:
         odoo = OdooClient()
-        product_info = odoo.get_product_info_by_name(product_name)
-        if not product_info:
-            await update.message.reply_text(f"Kechirasiz, '{product_name}' nomli tovar Odoo bazasidan topilmadi. Qaytadan urinib ko'ring yoki /start bosib menyuga qayting.")
+        matches = odoo.search_products(product_name, limit=20)
+        
+        if not matches:
+            keyboard = [[InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text(
+                f"Kechirasiz, '{product_name}' ga o'xshash tovar topilmadi. Qaytadan urinib ko'ring yoki Ortga qayting.",
+                reply_markup=reply_markup
+            )
             return WAITING_FOR_PRODUCT_NAME
             
-        product_id = product_info['id']
-        name = product_info['name']
+        context.user_data['search_matches'] = matches
+        context.user_data['search_index'] = 0
+        
+        await show_current_match(update, context, update.message)
+        return WAITING_FOR_PRODUCT_CONFIRMATION
+        
+    except Exception as e:
+        logging.error(f"Qidiruvda xatolik: {e}", exc_info=True)
+        keyboard = [[InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(f"Xatolik yuz berdi: {str(e)}", reply_markup=reply_markup)
+        return WAITING_FOR_PRODUCT_NAME
+
+async def show_current_match(update: Update, context: ContextTypes.DEFAULT_TYPE, message_obj=None):
+    matches = context.user_data.get('search_matches', [])
+    index = context.user_data.get('search_index', 0)
+    
+    if index >= len(matches):
+        keyboard = [[InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        text = "Boshqa o'xshash tovar topilmadi. Iltimos nomini aniqroq yozing."
+        if update.callback_query:
+            await update.callback_query.message.edit_text(text, reply_markup=reply_markup)
+        else:
+            await message_obj.reply_text(text, reply_markup=reply_markup)
+        return WAITING_FOR_PRODUCT_NAME
+        
+    match = matches[index]
+    text = f"📦 <b>{match['name']}</b>\n\nSiz shu tovarni qidirdingizmi?"
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ To'g'ri", callback_data="confirm_yes"),
+            InlineKeyboardButton("❌ Noto'g'ri", callback_data="confirm_no")
+        ],
+        [InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if update.callback_query:
+        await update.callback_query.message.edit_text(text, reply_markup=reply_markup, parse_mode='HTML')
+    else:
+        await message_obj.reply_text(text, reply_markup=reply_markup, parse_mode='HTML')
+
+async def handle_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "menu_back":
+        await start(update, context)
+        return ConversationHandler.END
+        
+    if query.data == "confirm_no":
+        context.user_data['search_index'] += 1
+        return await show_current_match(update, context)
+        
+    if query.data == "confirm_yes":
+        matches = context.user_data.get('search_matches', [])
+        index = context.user_data.get('search_index', 0)
+        match = matches[index]
+        
+        await query.message.edit_text(f"<b>{match['name']}</b> statistikasi yuklanmoqda...", parse_mode='HTML')
+        await send_product_statistics(query.message, match['id'], match['name'])
+        return ConversationHandler.END
+
+async def send_product_statistics(message_obj, product_id, name):
+    try:
+        odoo = OdooClient()
         pkg_info = extract_package_info(name)
         pkg_weight_kg = pkg_info['weight_kg']
         is_gram = pkg_info['is_gram']
@@ -252,15 +325,13 @@ async def handle_product_name(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         keyboard = [[InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_photo(photo=chart_buf, caption=final_msg, parse_mode='HTML', reply_markup=reply_markup)
+        await message_obj.reply_photo(photo=chart_buf, caption=final_msg, parse_mode='HTML', reply_markup=reply_markup)
         
     except Exception as e:
         logging.error(f"Statistikada xatolik: {e}", exc_info=True)
         keyboard = [[InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(f"Xatolik yuz berdi: {str(e)}", reply_markup=reply_markup)
-        
-    return ConversationHandler.END
+        await message_obj.reply_text(f"Xatolik yuz berdi: {str(e)}", reply_markup=reply_markup)
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Amaliyot bekor qilindi. /start ni bosing.")
@@ -302,7 +373,8 @@ def main():
             CallbackQueryHandler(menu_callback, pattern='^menu_')
         ],
         states={
-            WAITING_FOR_PRODUCT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_product_name)]
+            WAITING_FOR_PRODUCT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_product_name)],
+            WAITING_FOR_PRODUCT_CONFIRMATION: [CallbackQueryHandler(handle_confirmation)]
         },
         fallbacks=[CommandHandler('cancel', cancel), CommandHandler('start', start)]
     )

@@ -80,6 +80,22 @@ class OdooClient:
             'uom_id': product.get('uom_id'),
         }
 
+    def search_products(self, query, limit=10):
+        """
+        Foydalanuvchi kiritgan so'zlar bo'yicha aqlli qidiruv (fuzzy search).
+        Masalan 'jele vanil torto' kiritilsa, shu uchala so'z qatnashgan barcha tovarlarni topadi.
+        """
+        query = query.replace('(JAMI)', '').strip()
+        words = [w for w in query.split() if w]
+        
+        domain = []
+        for word in words:
+            domain.append(('name', 'ilike', word))
+            
+        results = self._exec('product.product', 'search_read', 
+                             domain, ['id', 'name', 'uom_id'], limit=limit)
+        return results
+
     def _get_sale_order_qty(self, product_id, date_from, date_to=None):
         """
         B2B prodajasidagi faqat aktiv zakazlardan sotuv miqdori.

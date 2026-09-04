@@ -156,18 +156,38 @@ def generate_reorder_excel(items):
         return None
         
     records = []
+    month_columns = []
+    if items and 'history' in items[0]:
+        month_columns = list(items[0]['history'].keys())
+        # Reverse them if needed so oldest is first. 
+        # In odoo_client, we appended from oldest (5 months ago) to newest (now)
+        # So they are already in the correct order: oldest to newest.
+
     for item in items:
-        records.append({
+        row = {
             'Tovar nomi': item.get('name', ''),
             'Hozirgi qoldiq (kg)': item.get('stock_qty', 0),
-            '1 Oylik Jami sotuv (kg)': item.get('sales_qty', 0),
-            'B2B Prodaja (kg)': item.get('sales_b2b', 0),
-            'O\'rikzorga transfer (kg)': item.get('transfer_urikzor', 0),
-            'Qo\'qonga transfer (kg)': item.get('transfer_qoqon', 0),
-            'Qoldiq yetadigan kun (Days Left)': item.get('days_left', 0),
             'Zakaz miqdori (kg)': item.get('reorder_qty', 0),
             'Qadoqlar soni': item.get('pieces', 0)
-        })
+        }
+        
+        # Oylik sotuvlarni qo'shish
+        total_hist = 0.0
+        for m in month_columns:
+            qty = item.get('history', {}).get(m, 0.0)
+            row[m] = round(qty, 2)
+            total_hist += qty
+            
+        row['Итого (Jami 6 oylik)'] = round(total_hist, 2)
+        
+        # Qolgan esktra infolar oxiriga qo'shib qo'yamiz
+        row['1 Oylik Jami sotuv (kg)'] = item.get('sales_qty', 0)
+        row['Qoldiq yetadigan kun'] = item.get('days_left', 0)
+        
+        records.append(row)
+        
+    # Alifbo tartibida saralash (Premium rasmda shunday edi)
+    records.sort(key=lambda x: x['Tovar nomi'].lower())
         
     import pandas as pd
     import io

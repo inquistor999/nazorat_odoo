@@ -363,7 +363,8 @@ async def check_inventory_logic(message_obj, context):
                     'transfer_qoqon': data.get('transfer_qoqon', 0.0),
                     'reorder_qty': reorder_info['reorder_qty'],
                     'days_left': reorder_info['days_left'],
-                    'pieces': reorder_info.get('pieces', 0)
+                    'pieces': reorder_info.get('pieces', 0),
+                    'history': data.get('history', {})
                 }
                 
                 all_items.append(item_data)

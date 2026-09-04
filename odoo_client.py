@@ -199,7 +199,8 @@ class OdooClient:
                     'sales_qty': 0.0,
                     'sales_b2b': 0.0,
                     'transfer_urikzor': 0.0,
-                    'transfer_qoqon': 0.0
+                    'transfer_qoqon': 0.0,
+                    'history': {}
                 }
                 
         pids = list(pid_to_name.keys())
@@ -266,7 +267,60 @@ class OdooClient:
                         results[pid_to_name[pid]]['transfer_urikzor'] += qty
                     elif dest_id == 4:
                         results[pid_to_name[pid]]['transfer_qoqon'] += qty
+                        
+        # 5. Tarixiy 6 oylik ma'lumotlarni olish (Pivot jadval uchun)
+        month_names_uz = {
+            1: 'Yanvar', 2: 'Fevral', 3: 'Mart', 4: 'Aprel',
+            5: 'May', 6: 'Iyun', 7: 'Iyul', 8: 'Avgust',
+            9: 'Sentabr', 10: 'Oktabr', 11: 'Noyabr', 12: 'Dekabr'
+        }
+        now = datetime.now()
+        for i in range(5, -1, -1):
+            mo = now.month - i
+            yr = now.year
+            while mo <= 0:
+                mo += 12
+                yr -= 1
+            
+            d_from = datetime(yr, mo, 1)
+            d_to = datetime(yr + 1, 1, 1) if mo == 12 else datetime(yr, mo + 1, 1)
+            month_label = f"{month_names_uz[mo]} {yr}"
+            
+            # Har bir tovarning history dict-iga nolinchi qiymat kiritish
+            for pid in pids:
+                results[pid_to_name[pid]]['history'][month_label] = 0.0
+                
+            s_domain = [
+                ('product_id', 'in', pids),
+                ('state', 'in', ['sale', 'done']),
+                ('order_id.company_id', '=', B2B_COMPANY_ID),
+                ('order_id.date_order', '>=', d_from.strftime('%Y-%m-%d 00:00:00')),
+                ('order_id.date_order', '<', d_to.strftime('%Y-%m-%d 00:00:00'))
+            ]
+            s_lines = self._exec('sale.order.line', 'search_read', s_domain, ['product_id', 'product_uom_qty'])
+            for sl in s_lines:
+                pid = sl['product_id'][0]
+                if pid in pid_to_name:
+                    results[pid_to_name[pid]]['history'][month_label] += sl.get('product_uom_qty', 0.0)
                     
+            ic_dom = [
+                ('company_from_id', '=', 3),
+                ('state', '=', 'done'),
+                ('scheduled_date', '>=', d_from.strftime('%Y-%m-%d 00:00:00')),
+                ('scheduled_date', '<', d_to.strftime('%Y-%m-%d 00:00:00'))
+            ]
+            tr = self._exec('intercompany.transfer', 'search_read', ic_dom, ['id'])
+            if tr:
+                tr_ids = [t['id'] for t in tr]
+                tr_lines = self._exec('intercompany.transfer.line', 'search_read', [
+                    ('transfer_id', 'in', tr_ids),
+                    ('product_id', 'in', pids)
+                ], ['product_id', 'quantity'])
+                for tl in tr_lines:
+                    pid = tl['product_id'][0]
+                    if pid in pid_to_name:
+                        results[pid_to_name[pid]]['history'][month_label] += tl.get('quantity', 0.0)
+                        
         return results
 
     def get_sales_total_30d(self, product_id):

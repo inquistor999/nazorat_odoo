@@ -422,8 +422,13 @@ def main():
         print("XATOLIK: .env faylida TELEGRAM_BOT_TOKEN kiritilmagan!")
         return
 
-    server_thread = threading.Thread(target=run_dummy_server, daemon=True)
-    server_thread.start()
+    render_url = os.environ.get('RENDER_EXTERNAL_URL')
+    
+    # Render bepul versiyasida uxlab qolmaslik uchun: 
+    # Agar webhook bo'lsa u holda ptb o'zi server ko'taradi, shuning uchun dummy_server shart emas
+    if not render_url:
+        server_thread = threading.Thread(target=run_dummy_server, daemon=True)
+        server_thread.start()
 
     request = HTTPXRequest(
         connection_pool_size=8,
@@ -455,8 +460,19 @@ def main():
 
     application.add_handler(conv_handler)
     
-    print("Bot ishga tushdi! Telegramdan /start yuboring.")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    if render_url:
+        port = int(os.environ.get('PORT', 10000))
+        webhook_url = f"{render_url}/{config.TELEGRAM_BOT_TOKEN}"
+        print(f"Render Webhook orqali ishga tushmoqda: {webhook_url}")
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=port,
+            url_path=config.TELEGRAM_BOT_TOKEN,
+            webhook_url=webhook_url
+        )
+    else:
+        print("Bot ishga tushdi (Polling)! Telegramdan /start yuboring.")
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
     main()

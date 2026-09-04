@@ -112,33 +112,44 @@ def generate_monthly_sales_excel(company_id, months, company_name):
         
     df = pd.DataFrame(records)
     
-    # Grouplash
-    # Har bir tovar va oy bo'yicha jami kg va summani hisoblash
-    grouped = df.groupby(['Tovar nomi', 'Oy', 'month_idx']).agg({
-        'Sotuv Kg': 'sum',
-        'Jami summa ($)': 'sum',
-        '1 kg narxi ($)': 'mean'  # O'rtacha narx
-    }).reset_index()
+    # Chronologik tartibni saqlash uchun oylarni tartiblash
+    month_order = df[['month_idx', 'Oy']].drop_duplicates().sort_values('month_idx')['Oy'].tolist()
     
-    # Oylarni to'g'ri tartiblash
-    grouped = grouped.sort_values(by=['Tovar nomi', 'month_idx'])
-    grouped = grouped.drop(columns=['month_idx'])
+    # Pivot jadval yaratish (Faqat kg, narxlar keremas)
+    pivot_df = pd.pivot_table(
+        df, 
+        values='Sotuv Kg', 
+        index='Tovar nomi', 
+        columns='Oy', 
+        aggfunc='sum', 
+        fill_value=0
+    ).reset_index()
+    
+    # Ustunlarni xronologik tartibga solish
+    cols = ['Tovar nomi'] + [m for m in month_order if m in pivot_df.columns]
+    pivot_df = pivot_df[cols]
+    
+    # Jami hisoblash
+    pivot_df['Итого (Jami)'] = pivot_df[[m for m in month_order if m in pivot_df.columns]].sum(axis=1)
+    
+    # Tovar nomlari bo'yicha A-Z saralash
+    pivot_df = pivot_df.sort_values(by='Tovar nomi')
     
     # Formatlash
-    grouped['Sotuv Kg'] = grouped['Sotuv Kg'].round(2)
-    grouped['Jami summa ($)'] = grouped['Jami summa ($)'].round(2)
-    grouped['1 kg narxi ($)'] = grouped['1 kg narxi ($)'].round(2)
-    
+    for col in pivot_df.columns:
+        if col != 'Tovar nomi':
+            pivot_df[col] = pivot_df[col].round(2)
+            
     # Excel fayl yaratish
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        grouped.to_excel(writer, sheet_name='Oylik Statistika', index=False)
+        pivot_df.to_excel(writer, sheet_name='Oylik Statistika', index=False)
         
         # Premium dizayn (ustunlarni moslashtirish)
         worksheet = writer.sheets['Oylik Statistika']
-        for idx, col in enumerate(grouped.columns):
+        for idx, col in enumerate(pivot_df.columns):
             max_len = max(
-                grouped[col].astype(str).map(len).max(),
+                pivot_df[col].astype(str).map(len).max(),
                 len(col)
             ) + 2
             col_letter = chr(65 + idx)

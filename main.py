@@ -384,7 +384,7 @@ async def check_inventory_logic(message_obj, context):
         import asyncio
         excel_file = await asyncio.to_thread(generate_reorder_excel, all_items)
         if excel_file:
-            await send_with_retry(lambda: update.callback_query.message.reply_document(
+            await send_with_retry(lambda: message_obj.reply_document(
                 document=excel_file,
                 filename="Zakaz_Ro'yxati.xlsx",
                 caption="📊 <b>Barcha tovarlar hisoboti (Excel)</b>\n\nQuyidagi faylda barcha tovarlarning:\n🔹 Hozirgi qoldig'i\n🔹 O'rikzor, Qo'qon va B2B sotuvlari (1 oylik)\n🔹 Qoldiq necha kunga yetishi\n🔹 Qancha zakaz qilish kerakligi batafsil yozilgan.",

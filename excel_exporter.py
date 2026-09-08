@@ -17,18 +17,27 @@ def extract_package_info(name):
         return {'weight_kg': val, 'is_gram': False}
     return {'weight_kg': 1.0, 'is_gram': False}
 
-def generate_monthly_sales_excel(company_id, months, company_name):
+def generate_monthly_sales_excel(company_id, months, company_name, selected_months=None, product_id=None):
     odoo = OdooClient()
     
     # 1. Sana oralig'ini aniqlash
     now = datetime.now()
-    month_offset = now.month - months
-    year_offset = now.year
-    while month_offset <= 0:
-        month_offset += 12
-        year_offset -= 1
+    if selected_months:
+        # selected_months: ['2023-08', '2023-07']
+        min_y, min_m = 9999, 12
+        for m_str in selected_months:
+            y, m = map(int, m_str.split('-'))
+            if y < min_y or (y == min_y and m < min_m):
+                min_y, min_m = y, m
+        date_from_dt = datetime(min_y, min_m, 1)
+    else:
+        month_offset = now.month - months
+        year_offset = now.year
+        while month_offset <= 0:
+            month_offset += 12
+            year_offset -= 1
+        date_from_dt = datetime(year_offset, month_offset, 1)
         
-    date_from_dt = datetime(year_offset, month_offset, 1)
     date_from = date_from_dt.strftime('%Y-%m-%d 00:00:00')
     
     # 2. Shu filialdagi barcha prodajalarni tortib olish
@@ -37,6 +46,8 @@ def generate_monthly_sales_excel(company_id, months, company_name):
         ('order_id.company_id', '=', company_id),
         ('order_id.date_order', '>=', date_from)
     ]
+    if product_id:
+        domain.append(('product_id', '=', product_id))
     
     logging.info(f"Odoo dan {company_name} uchun {months} oylik ma'lumotlar tortilmoqda...")
     
@@ -97,6 +108,11 @@ def generate_monthly_sales_excel(company_id, months, company_name):
             9: 'Sentabr', 10: 'Oktabr', 11: 'Noyabr', 12: 'Dekabr'
         }
         month_name = f"{month_names_uz[dt.month]} {dt.year}"
+        
+        if selected_months:
+            m_str = f"{dt.year}-{dt.month:02d}"
+            if m_str not in selected_months:
+                continue
         
         records.append({
             'Tovar nomi': prod_name,

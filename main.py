@@ -19,6 +19,8 @@ WAITING_FOR_PASSWORD = 1
 WAITING_FOR_PRODUCT_NAME = 2
 WAITING_FOR_PRODUCT_CONFIRMATION = 3
 WAITING_FOR_MONTHS = 4
+WAITING_FOR_ORIKZOR_PRODUCT_NAME = 5
+WAITING_FOR_ORIKZOR_PRODUCT_CONFIRMATION = 6
 
 async def send_with_retry(send_func, retries=3, delay=3):
     import asyncio
@@ -96,7 +98,12 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("📦 Tortilib qolgan tovarlar", callback_data="menu_check_inventory")],
             [InlineKeyboardButton("📊 Tovar statistikasi", callback_data="menu_product_stats")]
         ]
-    else: # O'rikzor, Qo'qon
+    elif comp_id == 2: # O'rikzor
+        keyboard = [
+            [InlineKeyboardButton("📅 Oy bo'yicha", callback_data="orikzor_by_month")],
+            [InlineKeyboardButton("📦 Tovar bo'yicha", callback_data="orikzor_by_product")]
+        ]
+    else: # Qo'qon
         keyboard = [
             [InlineKeyboardButton("📅 Oylik statistika (Excel)", callback_data="menu_monthly_stats")]
         ]
@@ -135,6 +142,17 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data == "menu_monthly_stats":
         await query.message.reply_text("Necha oylik statistika kerak? Raqam kiriting (masalan: 4):")
         return WAITING_FOR_MONTHS
+        
+    if query.data == "orikzor_by_month":
+        context.user_data['orikzor_selected_months'] = []
+        context.user_data['orikzor_month_page'] = 1
+        context.user_data['orikzor_target_product'] = None
+        await show_orikzor_months(query.message, context, is_edit=True)
+        return ConversationHandler.END
+        
+    if query.data == "orikzor_by_product":
+        await query.message.edit_text("Qidirmoqchi bo'lgan tovaringiz nomini yozing:")
+        return WAITING_FOR_ORIKZOR_PRODUCT_NAME
 
 async def handle_months(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
@@ -184,7 +202,7 @@ async def handle_product_name(update: Update, context: ContextTypes.DEFAULT_TYPE
             keyboard = [[InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await update.message.reply_text(
-                f"Kechirasiz, '{product_name}' ga o'xshash tovar topilmadi. Qaytadan urinib ko'ring yoki Ortga qayting.",
+                f"Kechirasiz, '{product_name}' ga o'xshash tovar topilmadi.\nQaytadan urinib ko'ring yoki Ortga qayting.",
                 reply_markup=reply_markup
             )
             return WAITING_FOR_PRODUCT_NAME
@@ -401,6 +419,221 @@ async def check_inventory_logic(message_obj, context):
         await message_obj.reply_text(f"Tizimda xatolik yuz berdi: {str(e)}", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
+
+# ----------------- O'rikzor Oylar Sistemasi -----------------
+async def show_orikzor_months(message_obj, context, is_edit=False):
+    from datetime import datetime
+    now = datetime.now()
+    
+    page = context.user_data.get('orikzor_month_page', 1)
+    selected = context.user_data.get('orikzor_selected_months', [])
+    
+    month_names_uz = {
+        1: 'Yanvar', 2: 'Fevral', 3: 'Mart', 4: 'Aprel',
+        5: 'May', 6: 'Iyun', 7: 'Iyul', 8: 'Avgust',
+        9: 'Sentabr', 10: 'Oktabr', 11: 'Noyabr', 12: 'Dekabr'
+    }
+    
+    months_list = []
+    if page == 1:
+        # Hozirgi oydan orqaga 5 oy
+        for i in range(5):
+            m = now.month - i
+            y = now.year
+            if m <= 0:
+                m += 12
+                y -= 1
+            months_list.append((y, m))
+    else:
+        # 6-chi oydan o'tgan yil dekabrgacha
+        start_m = now.month - 5
+        start_y = now.year
+        if start_m <= 0:
+            start_m += 12
+            start_y -= 1
+            
+        curr_y = start_y
+        curr_m = start_m
+        while True:
+            months_list.append((curr_y, curr_m))
+            curr_m -= 1
+            if curr_m <= 0:
+                curr_m = 12
+                curr_y -= 1
+            if curr_y < now.year - 1 or (curr_y == now.year - 1 and curr_m < 12):
+                break # o'tgan yil dekabrgacha
+                
+    keyboard = []
+    for y, m in months_list:
+        m_str = f"{y}-{m:02d}"
+        text = f"{month_names_uz[m]} {y}"
+        if m_str in selected:
+            text = f"✅ {text}"
+        keyboard.append([InlineKeyboardButton(text, callback_data=f"omonth_{m_str}")])
+        
+    bottom_buttons = []
+    bottom_buttons.append(InlineKeyboardButton("Tayyor ✅", callback_data="omonth_ready"))
+    if page == 1:
+        bottom_buttons.append(InlineKeyboardButton("Boshqa oy ⬇️", callback_data="omonth_nextpage"))
+    keyboard.append(bottom_buttons)
+    keyboard.append([InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    text = "📅 <b>Sizga qaysi oylar hisoboti kerak?</b>\n(Bir nechta tanlashingiz mumkin)"
+    
+    if is_edit:
+        await message_obj.edit_text(text, reply_markup=reply_markup, parse_mode='HTML')
+    else:
+        await message_obj.reply_text(text, reply_markup=reply_markup, parse_mode='HTML')
+
+async def handle_orikzor_month_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    
+    if data == "omonth_nextpage":
+        context.user_data['orikzor_month_page'] = 2
+        await show_orikzor_months(query.message, context, is_edit=True)
+        return
+        
+    if data.startswith("omonth_") and data != "omonth_ready":
+        m_str = data.split("_")[1]
+        selected = context.user_data.get('orikzor_selected_months', [])
+        if m_str in selected:
+            selected.remove(m_str)
+        else:
+            selected.append(m_str)
+        context.user_data['orikzor_selected_months'] = selected
+        await show_orikzor_months(query.message, context, is_edit=True)
+        return
+        
+    if data == "omonth_ready":
+        selected = context.user_data.get('orikzor_selected_months', [])
+        if not selected:
+            await query.answer("Iltimos, kamida bitta oyni tanlang!", show_alert=True)
+            return
+            
+        await query.message.edit_text("⏳ Ma'lumotlar yig'ilmoqda. Iltimos kuting...")
+        
+        comp_id = context.user_data.get('selected_company')
+        comp_name = context.user_data.get('company_name')
+        target_product = context.user_data.get('orikzor_target_product') # None or dict
+        
+        from excel_exporter import generate_monthly_sales_excel
+        import asyncio
+        try:
+            target_prod_id = target_product['id'] if target_product else None
+            excel_file = await asyncio.to_thread(generate_monthly_sales_excel, comp_id, None, comp_name, selected_months=selected, product_id=target_prod_id)
+            if excel_file:
+                cap = f"📊 <b>{comp_name}</b> filiali bo'yicha tanlangan oylar statistikasi."
+                if target_product:
+                    cap = f"📊 <b>{target_product['name']}</b> bo'yicha tanlangan oylar statistikasi."
+                    
+                await update.callback_query.message.reply_document(
+                    document=excel_file,
+                    filename=f"Statistika.xlsx",
+                    caption=cap,
+                    parse_mode='HTML'
+                )
+            else:
+                await update.callback_query.message.reply_text("Ushbu oylarda hech qanday sotuv topilmadi.")
+        except Exception as e:
+            logging.error(f"Excel yaratishda xato: {e}", exc_info=True)
+            await update.callback_query.message.reply_text("Xatolik yuz berdi. Iltimos qaytadan urinib ko'ring.")
+            
+        await show_main_menu(update, context)
+
+# ----------------- O'rikzor Tovar qidirish logikasi -----------------
+
+async def handle_orikzor_product_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    product_name = update.message.text
+    await update.message.reply_text("Odoo bazasidan ma'lumot izlanmoqda. Iltimos kuting...")
+    
+    try:
+        import asyncio
+        odoo = OdooClient()
+        matches = await asyncio.to_thread(odoo.search_products, product_name, 20)
+        
+        if not matches:
+            keyboard = [[InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]]
+            await update.message.reply_text(
+                f"Kechirasiz, '{product_name}' ga o'xshash tovar topilmadi.\nQaytadan urinib ko'ring yoki Ortga qayting.",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return WAITING_FOR_ORIKZOR_PRODUCT_NAME
+            
+        context.user_data['o_search_matches'] = matches
+        context.user_data['o_search_index'] = 0
+        
+        await show_orikzor_product_match(update, context, update.message)
+        return WAITING_FOR_ORIKZOR_PRODUCT_CONFIRMATION
+        
+    except Exception as e:
+        logging.error(f"Qidiruvda xatolik: {e}", exc_info=True)
+        keyboard = [[InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]]
+        await update.message.reply_text(f"Xatolik yuz berdi: {str(e)}", reply_markup=InlineKeyboardMarkup(keyboard))
+        return WAITING_FOR_ORIKZOR_PRODUCT_NAME
+
+async def show_orikzor_product_match(update: Update, context: ContextTypes.DEFAULT_TYPE, message_obj=None):
+    matches = context.user_data.get('o_search_matches', [])
+    index = context.user_data.get('o_search_index', 0)
+    
+    if index >= len(matches):
+        keyboard = [[InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]]
+        text = "Boshqa o'xshash tovar topilmadi. Iltimos nomini aniqroq yozing."
+        if update.callback_query:
+            await update.callback_query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        else:
+            await message_obj.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        return WAITING_FOR_ORIKZOR_PRODUCT_NAME
+        
+    batch = matches[index:index+4]
+    
+    text = "📦 <b>Quyidagi tovarlardan birini tanlang:</b>\n\n"
+    keyboard = [[]]
+    for i, match in enumerate(batch):
+        idx = index + i + 1
+        text += f"{idx}. {match['name']}\\n"
+        keyboard[0].append(InlineKeyboardButton(str(idx), callback_data=f"oconfirm_{i}"))
+        
+    keyboard.append([InlineKeyboardButton("Bu emas ❌", callback_data="oconfirm_next")])
+    keyboard.append([InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if update.callback_query:
+        await update.callback_query.message.edit_text(text, reply_markup=reply_markup, parse_mode='HTML')
+    else:
+        await message_obj.reply_text(text, reply_markup=reply_markup, parse_mode='HTML')
+
+async def handle_orikzor_product_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "menu_back":
+        await show_main_menu(update, context)
+        return ConversationHandler.END
+        
+    if query.data == "oconfirm_next":
+        context.user_data['o_search_index'] += 4
+        return await show_orikzor_product_match(update, context)
+        
+    if query.data.startswith("oconfirm_"):
+        offset = int(query.data.split("_")[1])
+        index = context.user_data.get('o_search_index', 0) + offset
+        matches = context.user_data.get('o_search_matches', [])
+        
+        if index < len(matches):
+            selected_product = matches[index]
+            context.user_data['orikzor_target_product'] = selected_product
+            context.user_data['orikzor_selected_months'] = []
+            context.user_data['orikzor_month_page'] = 1
+            await show_orikzor_months(query.message, context, is_edit=True)
+            return ConversationHandler.END
+            
+    return WAITING_FOR_ORIKZOR_PRODUCT_CONFIRMATION
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Amaliyot bekor qilindi. /start ni bosing.")
     return ConversationHandler.END
@@ -444,17 +677,21 @@ def main():
         entry_points=[
             CommandHandler('start', start),
             CallbackQueryHandler(menu_callback, pattern='^menu_'),
-            CallbackQueryHandler(handle_company_selection, pattern='^comp_')
+            CallbackQueryHandler(handle_company_selection, pattern='^comp_'),
+            CallbackQueryHandler(handle_orikzor_month_callback, pattern='^omonth_'),
         ],
         states={
             WAITING_FOR_PASSWORD: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_password),
                 CallbackQueryHandler(handle_company_selection, pattern='^comp_'),
+                CallbackQueryHandler(handle_orikzor_month_callback, pattern='^omonth_'),
                 CallbackQueryHandler(menu_callback, pattern='^menu_')
             ],
             WAITING_FOR_PRODUCT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_product_name)],
             WAITING_FOR_PRODUCT_CONFIRMATION: [CallbackQueryHandler(handle_confirmation)],
             WAITING_FOR_MONTHS: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_months)],
+            WAITING_FOR_ORIKZOR_PRODUCT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_orikzor_product_name)],
+            WAITING_FOR_ORIKZOR_PRODUCT_CONFIRMATION: [CallbackQueryHandler(handle_orikzor_product_confirmation)],
         },
         fallbacks=[CommandHandler('cancel', cancel), CommandHandler('start', start)]
     )

@@ -37,7 +37,7 @@ async def send_with_retry(send_func, retries=3, delay=3):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.first_name if update.effective_user else "foydalanuvchi"
-    welcome_text = f"👋 Salom {user_name}! Men yordamchi AI botman. Qanday savolingiz bor?\n(Hisobot menyusini ochish uchun shunchaki 'atchot' deb yozing)"
+    welcome_text = f"👋 Salom {user_name}! Men yordamchi AI botman. Qanday savolingiz bor?"
     if update.message:
         await update.message.reply_text(welcome_text)
     elif update.callback_query:

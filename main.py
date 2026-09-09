@@ -9,6 +9,7 @@ import config
 from odoo_client import OdooClient
 from analysis import calculate_reorder_qty, create_sales_history_chart, extract_package_info
 from excel_exporter import generate_monthly_sales_excel, generate_reorder_excel
+from ai_agent import ai_assistant
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -35,27 +36,45 @@ async def send_with_retry(send_func, retries=3, delay=3):
                 raise
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/start bosilganda kompaniya tanlash menyusi"""
+    user_name = update.effective_user.first_name if update.effective_user else "foydalanuvchi"
+    welcome_text = f"👋 Salom {user_name}! Men yordamchi AI botman. Qanday savolingiz bor?\n(Hisobot menyusini ochish uchun shunchaki 'atchot' deb yozing)"
+    if update.message:
+        await update.message.reply_text(welcome_text)
+    elif update.callback_query:
+        await update.callback_query.message.reply_text(welcome_text)
+    return ConversationHandler.END
+
+async def show_company_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🏢 B2B", callback_data="comp_3")],
         [InlineKeyboardButton("🏪 O'rikzor", callback_data="comp_2")],
-        [InlineKeyboardButton("🏬 Qo'qon", callback_data="comp_4")]
+        [InlineKeyboardButton("🏬 Qo'qon", callback_data="comp_4")],
+        [InlineKeyboardButton("🔙 Ortga qaytish (AI rejim)", callback_data="cancel_to_ai")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    user_name = update.effective_user.first_name if update.effective_user else "foydalanuvchi"
-    welcome_text = (
-        f"👋 <b>Salom {user_name}! Xush kelibsiz.</b>\n\n"
-        "🤖 <i>Men sizning shaxsiy Odoo yordamchingizman.</i>\n"
-        "👇 Iltimos, hisobot olish uchun filialni tanlang:"
-    )
-    
+    text = "👇 Iltimos, hisobot olish uchun filialni tanlang:"
     if update.message:
-        await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode='HTML')
-    elif update.callback_query:
-        await update.callback_query.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode='HTML')
-        
+        await update.message.reply_text(text, reply_markup=reply_markup)
+    else:
+        await update.callback_query.message.edit_text(text, reply_markup=reply_markup)
     return WAITING_FOR_PASSWORD
+
+async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    if text.lower() == 'atchot':
+        return await show_company_selection(update, context)
+    else:
+        await update.message.chat.send_action(action='typing')
+        response = await ai_assistant.get_response(text, update.effective_user.id)
+        await update.message.reply_text(response)
+        return ConversationHandler.END
+
+async def handle_cancel_to_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.message.edit_text("AI rejimga qaytdik. Yana qanday savolingiz bor?")
+    return ConversationHandler.END
+
 
 async def handle_company_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -124,7 +143,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     if query.data == "menu_start":
-        return await start(update, context)
+        return await show_company_selection(update, context)
         
     if query.data == "menu_back":
         await show_main_menu(update, context)
@@ -676,6 +695,7 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_ai_or_atchot),
             CallbackQueryHandler(menu_callback, pattern='^(menu_|orikzor_by_)'),
             CallbackQueryHandler(handle_company_selection, pattern='^comp_'),
             CallbackQueryHandler(handle_orikzor_month_callback, pattern='^omonth_'),
@@ -685,7 +705,8 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_password),
                 CallbackQueryHandler(handle_company_selection, pattern='^comp_'),
                 CallbackQueryHandler(handle_orikzor_month_callback, pattern='^omonth_'),
-                CallbackQueryHandler(menu_callback, pattern='^(menu_|orikzor_by_)')
+                CallbackQueryHandler(menu_callback, pattern='^(menu_|orikzor_by_)'),
+                CallbackQueryHandler(handle_cancel_to_ai, pattern='^cancel_to_ai$')
             ],
             WAITING_FOR_PRODUCT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_product_name)],
             WAITING_FOR_PRODUCT_CONFIRMATION: [CallbackQueryHandler(handle_confirmation)],

@@ -426,3 +426,29 @@ class OdooClient:
             'partner': partner[1] if partner else "Noma'lum",
             'date': date_order
         }
+
+    def get_general_stats(self):
+        """Odoo dan umumiy qiziqarli statistikalarni oladi"""
+        stats = []
+        
+        # 1. Xodimlar soni
+        try:
+            emp_count = self.models.execute_kw(self.db, self.uid, self.password, 'hr.employee', 'search_count', [[]])
+            stats.append(f"Jami xodimlar soni: {emp_count} ta")
+        except Exception:
+            pass
+
+        # 2. Bugungi sotuvlar
+        from datetime import datetime
+        today_str = datetime.now().strftime('%Y-%m-%d 00:00:00')
+        try:
+            sales = self._exec('sale.order', 'search_read', [('date_order', '>=', today_str), ('state', 'in', ['sale', 'done'])], ['amount_total', 'company_id'])
+            total_sum = sum(s.get('amount_total', 0) for s in sales)
+            stats.append(f"Bugungi jami sotuvlar summasi: {total_sum} sum")
+        except Exception:
+            pass
+            
+        if not stats:
+            return "Hech qanday statistika topilmadi yoki ruxsat yo'q."
+            
+        return "\n".join(stats)

@@ -3,7 +3,7 @@ import json
 import logging
 from duckduckgo_search import DDGS
 from odoo_client import OdooClient
-import g4f
+import google.generativeai as genai
 
 def get_odoo_stats():
     """Odoo bazasidan umumiy statistikalarni olib beradi"""
@@ -28,6 +28,13 @@ class AIAssistant:
         self.memory_file = "memory.json"
         self.memory = self.load_memory()
         
+        self.api_key = os.getenv("GEMINI_API_KEY")
+        if self.api_key:
+            genai.configure(api_key=self.api_key)
+            self.model = genai.GenerativeModel('gemini-1.5-flash')
+        else:
+            self.model = None
+        
     def load_memory(self):
         if os.path.exists(self.memory_file):
             try:
@@ -45,7 +52,6 @@ class AIAssistant:
             logging.error(f"Xotira saqlash xatosi: {e}")
 
     def find_in_memory(self, query):
-        # So'zlar mosligi orqali xotirani tekshirish
         query_words = set(query.lower().split())
         best_match = None
         best_score = 0
@@ -57,30 +63,20 @@ class AIAssistant:
                 best_match = stored_a
         return best_match
         
-    async def generate_g4f_response(self, prompt: str):
+    async def generate_response(self, prompt: str):
+        if not self.model:
+            return "⚠️ GEMINI_API_KEY topilmadi! Iltimos .env ga kalitni kiriting."
+            
         import asyncio
-        def run_g4f():
+        def run_gemini():
             try:
-                client = g4f.client.Client()
-                response = client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=[
-                        {"role": "system", "content": "Siz aqlli, insoniy tilda gapiruvchi o'zbek tilidagi yordamchi botsiz. Qisqa va aniq javob bering."},
-                        {"role": "user", "content": prompt}
-                    ]
-                )
-                return response.choices[0].message.content
+                system_instruction = "Siz aqlli o'zbek tilidagi yordamchi botsiz. Qisqa va insoniy tilda javob bering."
+                chat = self.model.start_chat()
+                response = chat.send_message(f"DIQQAT YURIQNOMA: {system_instruction}\n\nSAVOL: {prompt}")
+                return response.text
             except Exception as e:
-                # Fallback to another model or default if gpt-4o provider fails
-                try:
-                    response2 = client.chat.completions.create(
-                        model="gpt-3.5-turbo",
-                        messages=[{"role": "user", "content": prompt}]
-                    )
-                    return response2.choices[0].message.content
-                except Exception as e2:
-                    return f"Miyada uzilish ro'y berdi (G4F Xatosi): Asosiy xato: {e}, Qo'shimcha xato: {e2}"
-        return await asyncio.to_thread(run_g4f)
+                return f"Gemini Xatosi: {e}"
+        return await asyncio.to_thread(run_gemini)
 
     async def get_response(self, text: str, user_id: int) -> str:
         # 1. Xotirani tekshiramiz
@@ -95,22 +91,22 @@ class AIAssistant:
             odoo_data = get_odoo_stats()
             context += f"Odoo bazasidan hozir olingan ma'lumot:\n{odoo_data}\n"
             
-        # 3. Internet qidiramiz agar Odoo bilan bog'liq bo'lmasa
+        # 3. Internet qidiramiz
         if not context:
             web_data = search_internet(text)
             if web_data:
                 context += f"Internetdan qidirilgan ma'lumot:\n{web_data}\n"
                 
-        # 4. G4F ga jo'natamiz
+        # 4. LLM ga jo'natamiz
         if context:
             prompt = f"Foydalanuvchining savoli: {text}\nSenga yordam sifatida quyidagi ma'lumot topildi:\n{context}\nFaqat shu ma'lumot asosida yoki o'z biliming bilan javob tuz."
         else:
             prompt = text
             
-        ans = await self.generate_g4f_response(prompt)
+        ans = await self.generate_response(prompt)
         
         # 5. Xotiraga saqlash
-        if "Xatosi" not in ans:
+        if "Xatosi" not in ans and "GEMINI_API_KEY" not in ans:
             self.memory[text] = ans
             self.save_memory()
             

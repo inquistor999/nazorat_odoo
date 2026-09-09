@@ -1,62 +1,119 @@
 import os
-import google.generativeai as genai
+import json
+import logging
 from duckduckgo_search import DDGS
 from odoo_client import OdooClient
-import logging
+import g4f
 
 def get_odoo_stats():
-    """Odoo bazasidan umumiy statistikalarni (ishchilar soni, bugungi savdo va hk) olib beradi"""
+    """Odoo bazasidan umumiy statistikalarni olib beradi"""
     try:
         odoo = OdooClient()
         return odoo.get_general_stats()
     except Exception as e:
-        return f"Odoo bazasiga ulanishda xato: {e}"
+        return f"Odoo xatosi: {e}"
 
 def search_internet(query: str):
-    """Internetdan (Google/DuckDuckGo) ixtiyoriy ma'lumotni izlaydi"""
+    """Internetdan izlaydi"""
     try:
         results = DDGS().text(query, max_results=3)
         if not results:
-            return "Hech narsa topilmadi."
+            return ""
         return "\n".join([f"- {r['title']}: {r['body']}" for r in results])
     except Exception as e:
-        return f"Internetdan qidirishda xato: {e}"
+        return ""
 
 class AIAssistant:
     def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY")
-        if self.api_key:
-            genai.configure(api_key=self.api_key)
-            self.system_instruction = (
-                "Siz Odoo ERP tizimi uchun yaratilgan yordamchi AI botsiz. "
-                "Foydalanuvchilar bilan insoniy, muloyim, qisqa va lo'nda tilda gaplashing. "
-                "Kerak bo'lsa Odoo statistikasidan yoki internetdan olingan ma'lumotlardan foydalaning."
-            )
-            self.model = genai.GenerativeModel(
-                model_name='gemini-1.5-flash',
-                tools=[get_odoo_stats, search_internet],
-                system_instruction=self.system_instruction
-            )
-            self.chats = {}
-        else:
-            self.model = None
+        self.memory_file = "memory.json"
+        self.memory = self.load_memory()
+        
+    def load_memory(self):
+        if os.path.exists(self.memory_file):
+            try:
+                with open(self.memory_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                return {}
+        return {}
+        
+    def save_memory(self):
+        try:
+            with open(self.memory_file, 'w', encoding='utf-8') as f:
+                json.dump(self.memory, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logging.error(f"Xotira saqlash xatosi: {e}")
 
-    def _get_chat(self, user_id):
-        if user_id not in self.chats:
-            self.chats[user_id] = self.model.start_chat(enable_automatic_function_calling=True)
-        return self.chats[user_id]
+    def find_in_memory(self, query):
+        # So'zlar mosligi orqali xotirani tekshirish
+        query_words = set(query.lower().split())
+        best_match = None
+        best_score = 0
+        for stored_q, stored_a in self.memory.items():
+            stored_words = set(stored_q.lower().split())
+            score = len(query_words.intersection(stored_words)) / max(1, len(query_words.union(stored_words)))
+            if score > 0.6 and score > best_score:
+                best_score = score
+                best_match = stored_a
+        return best_match
+        
+    async def generate_g4f_response(self, prompt: str):
+        import asyncio
+        def run_g4f():
+            try:
+                client = g4f.client.Client()
+                response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "system", "content": "Siz aqlli, insoniy tilda gapiruvchi o'zbek tilidagi yordamchi botsiz. Qisqa va aniq javob bering."},
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+                return response.choices[0].message.content
+            except Exception as e:
+                # Fallback to another model or default if gpt-4o provider fails
+                try:
+                    response = g4f.ChatCompletion.create(
+                        model=g4f.models.gpt_35_turbo,
+                        messages=[{"role": "user", "content": prompt}]
+                    )
+                    return response
+                except Exception as e2:
+                    return f"Miyada uzilish ro'y berdi (G4F Xatosi): {e2}"
+        return await asyncio.to_thread(run_g4f)
 
     async def get_response(self, text: str, user_id: int) -> str:
-        if not self.model:
-            return "⚠️ AI rejimi ishlamayapti, sababi GEMINI_API_KEY `.env` faylida kiritilmagan.\nIltimos admin bilan bog'laning."
+        # 1. Xotirani tekshiramiz
+        mem_ans = self.find_in_memory(text)
+        if mem_ans:
+            return f"🧠 Xotiradan:\n{mem_ans}"
             
-        try:
-            import asyncio
-            chat = self._get_chat(user_id)
-            response = await asyncio.to_thread(chat.send_message, text)
-            return response.text
-        except Exception as e:
-            logging.error(f"AI Error: {e}")
-            return "Kechirasiz, hozir men bu savolga javob bera olmayman. Tizimda xatolik yuz berdi."
+        context = ""
+        # 2. Odoo statistikasimi?
+        text_lower = text.lower()
+        if 'odoo' in text_lower or 'ishchi' in text_lower or 'sotuv' in text_lower or 'statistika' in text_lower:
+            odoo_data = get_odoo_stats()
+            context += f"Odoo bazasidan hozir olingan ma'lumot:\n{odoo_data}\n"
+            
+        # 3. Internet qidiramiz agar Odoo bilan bog'liq bo'lmasa
+        if not context:
+            web_data = search_internet(text)
+            if web_data:
+                context += f"Internetdan qidirilgan ma'lumot:\n{web_data}\n"
+                
+        # 4. G4F ga jo'natamiz
+        if context:
+            prompt = f"Foydalanuvchining savoli: {text}\nSenga yordam sifatida quyidagi ma'lumot topildi:\n{context}\nFaqat shu ma'lumot asosida yoki o'z biliming bilan javob tuz."
+        else:
+            prompt = text
+            
+        ans = await self.generate_g4f_response(prompt)
+        
+        # 5. Xotiraga saqlash
+        if "Xatosi" not in ans:
+            self.memory[text] = ans
+            self.save_memory()
+            
+        return ans
 
 ai_assistant = AIAssistant()

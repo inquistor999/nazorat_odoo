@@ -31,7 +31,7 @@ def generate_monthly_sales_excel(company_id, months, company_name, selected_mont
                 min_y, min_m = y, m
         date_from_dt = datetime(min_y, min_m, 1)
     else:
-        month_offset = now.month - months
+        month_offset = now.month - months + 1
         year_offset = now.year
         while month_offset <= 0:
             month_offset += 12
@@ -128,10 +128,32 @@ def generate_monthly_sales_excel(company_id, months, company_name, selected_mont
         
     df = pd.DataFrame(records)
     
-    # Chronologik tartibni saqlash uchun oylarni tartiblash
-    month_order = df[['month_idx', 'Oy']].drop_duplicates().sort_values('month_idx')['Oy'].tolist()
+    # Barcha kutilayotgan oylarni aniqlash
+    expected_months = []
+    month_names_uz = {
+        1: 'Yanvar', 2: 'Fevral', 3: 'Mart', 4: 'Aprel',
+        5: 'May', 6: 'Iyun', 7: 'Iyul', 8: 'Avgust',
+        9: 'Sentabr', 10: 'Oktabr', 11: 'Noyabr', 12: 'Dekabr'
+    }
     
-    # Pivot jadval yaratish (Faqat kg, narxlar keremas)
+    if selected_months:
+        sorted_m = sorted(selected_months)
+        for m_str in sorted_m:
+            y, m = map(int, m_str.split('-'))
+            expected_months.append(f"{month_names_uz[m]} {y}")
+    else:
+        y, m = date_from_dt.year, date_from_dt.month
+        end_y, end_m = datetime.now().year, datetime.now().month
+        while True:
+            expected_months.append(f"{month_names_uz[m]} {y}")
+            if y > end_y or (y == end_y and m >= end_m):
+                break
+            m += 1
+            if m > 12:
+                m = 1
+                y += 1
+                
+    # Pivot jadval yaratish
     pivot_df = pd.pivot_table(
         df, 
         values='Sotuv Kg', 
@@ -141,12 +163,17 @@ def generate_monthly_sales_excel(company_id, months, company_name, selected_mont
         fill_value=0
     ).reset_index()
     
+    # Yetishmayotgan oylarni 0 bilan to'ldirish
+    for m_name in expected_months:
+        if m_name not in pivot_df.columns:
+            pivot_df[m_name] = 0
+            
     # Ustunlarni xronologik tartibga solish
-    cols = ['Tovar nomi'] + [m for m in month_order if m in pivot_df.columns]
+    cols = ['Tovar nomi'] + expected_months
     pivot_df = pivot_df[cols]
     
     # Jami hisoblash
-    pivot_df['Итого (Jami)'] = pivot_df[[m for m in month_order if m in pivot_df.columns]].sum(axis=1)
+    pivot_df['Итого (Jami)'] = pivot_df[expected_months].sum(axis=1)
     
     # Tovar nomlari bo'yicha A-Z saralash
     pivot_df = pivot_df.sort_values(by='Tovar nomi')

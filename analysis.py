@@ -39,8 +39,11 @@ def calculate_reorder_qty(product_name, current_stock, sales_last_30_days, lead_
         reorder_qty = needed_for_period - current_stock
     
     # Omborda qancha kunga yetadigan zaxira bor
-    days_left = current_stock / daily_sales if daily_sales > 0 else 999
-    
+    if current_stock <= 0 and daily_sales <= 0:
+        days_left = 0
+    else:
+        days_left = current_stock / daily_sales if daily_sales > 0 else 999
+        
     # Qadoq og'irligini aniqlash va shunga karrali qilib yaxlitlash
     pkg_info = extract_package_info(product_name)
     pkg_weight_kg = pkg_info['weight_kg']

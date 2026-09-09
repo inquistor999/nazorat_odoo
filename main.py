@@ -676,7 +676,7 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
-            CallbackQueryHandler(menu_callback, pattern='^menu_'),
+            CallbackQueryHandler(menu_callback, pattern='^(menu_|orikzor_by_)'),
             CallbackQueryHandler(handle_company_selection, pattern='^comp_'),
             CallbackQueryHandler(handle_orikzor_month_callback, pattern='^omonth_'),
         ],
@@ -685,7 +685,7 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_password),
                 CallbackQueryHandler(handle_company_selection, pattern='^comp_'),
                 CallbackQueryHandler(handle_orikzor_month_callback, pattern='^omonth_'),
-                CallbackQueryHandler(menu_callback, pattern='^menu_')
+                CallbackQueryHandler(menu_callback, pattern='^(menu_|orikzor_by_)')
             ],
             WAITING_FOR_PRODUCT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_product_name)],
             WAITING_FOR_PRODUCT_CONFIRMATION: [CallbackQueryHandler(handle_confirmation)],

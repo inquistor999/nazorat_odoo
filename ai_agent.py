@@ -70,7 +70,16 @@ class AIAssistant:
         import asyncio
         def run_gemini():
             try:
-                system_instruction = "Siz aqlli o'zbek tilidagi yordamchi botsiz. Qisqa va insoniy tilda javob bering."
+                odoo_memory = (
+                    "Kompaniyaning Odoo bazasi haqida ma'lumotlar:\n"
+                    "- O'rnatilgan modullar soni: 271\n"
+                    "- Jami xodimlar/menejerlar (ichki foydalanuvchilar): 33 ta (jumladan: Behzod, Xasan, Samandar, Sunnat, Administrator, Sardor, Akmalxon, Sanjar, Ibrohim, Dilshod, Shahzod, Bahrom, Shoxrux, Oybek, Abdulaziz, Umid, Qaxramon, Shavkat, Mahmud, Jasur, Islom, Abduvohidjon, Nodir, Mirahmad, Ozodbek, Nodirjon, Saidvali, Zafar, Elmurod, Umar, Shuxrat)\n"
+                    "- Umumiy kontaktlar (mijozlar/hamkorlar) soni: 3662\n"
+                    "- Jami tovarlar/mahsulotlar soni: 1283\n"
+                    "- Oxirgi 30 kunlik savdo aylanmasi: 2198 ta buyurtma orqali jami 24,207,062,259.14 so'm (24.2 milliard so'm) savdo bo'lgan.\n"
+                    "Siz ushbu ma'lumotlarni yoddan bilasiz va so'ralganda shu ma'lumotlarga asoslanib javob berasiz."
+                )
+                system_instruction = f"Siz aqlli o'zbek tilidagi yordamchi botsiz. Qisqa va insoniy tilda javob bering.\n\n{odoo_memory}"
                 chat = self.model.start_chat()
                 response = chat.send_message(f"DIQQAT YURIQNOMA: {system_instruction}\n\nSAVOL: {prompt}")
                 return response.text

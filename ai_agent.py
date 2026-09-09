@@ -73,13 +73,13 @@ class AIAssistant:
             except Exception as e:
                 # Fallback to another model or default if gpt-4o provider fails
                 try:
-                    response = g4f.ChatCompletion.create(
-                        model=g4f.models.gpt_35_turbo,
+                    response2 = client.chat.completions.create(
+                        model="gpt-3.5-turbo",
                         messages=[{"role": "user", "content": prompt}]
                     )
-                    return response
+                    return response2.choices[0].message.content
                 except Exception as e2:
-                    return f"Miyada uzilish ro'y berdi (G4F Xatosi): {e2}"
+                    return f"Miyada uzilish ro'y berdi (G4F Xatosi): Asosiy xato: {e}, Qo'shimcha xato: {e2}"
         return await asyncio.to_thread(run_g4f)
 
     async def get_response(self, text: str, user_id: int) -> str:

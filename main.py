@@ -253,16 +253,18 @@ async def show_current_match(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await message_obj.reply_text(text, reply_markup=reply_markup)
         return WAITING_FOR_PRODUCT_NAME
         
-    match = matches[index]
-    text = f"📦 <b>{match['name']}</b>\n\nSiz shu tovarni qidirdingizmi?"
+    batch = matches[index:index+4]
     
-    keyboard = [
-        [
-            InlineKeyboardButton("✅ To'g'ri", callback_data="confirm_yes"),
-            InlineKeyboardButton("❌ Noto'g'ri", callback_data="confirm_no")
-        ],
-        [InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")]
-    ]
+    text = "📦 <b>Quyidagi tovarlardan birini tanlang:</b>\n\n"
+    keyboard = [[]]
+    for i, match in enumerate(batch):
+        idx = index + i + 1
+        text += f"<b>{idx}.</b> {match['name']}\n\n"
+        keyboard[0].append(InlineKeyboardButton(str(idx), callback_data=f"confirm_{i}"))
+        
+    keyboard.append([InlineKeyboardButton("Bu emas ❌", callback_data="confirm_next")])
+    keyboard.append([InlineKeyboardButton("Ortga qaytish 🔙", callback_data="menu_back")])
+    
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     if update.callback_query:
@@ -278,18 +280,20 @@ async def handle_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE
         await show_main_menu(update, context)
         return ConversationHandler.END
         
-    if query.data == "confirm_no":
-        context.user_data['search_index'] += 1
+    if query.data == "confirm_next":
+        context.user_data['search_index'] += 4
         return await show_current_match(update, context)
         
-    if query.data == "confirm_yes":
+    if query.data.startswith("confirm_"):
+        offset = int(query.data.split("_")[1])
+        index = context.user_data.get('search_index', 0) + offset
         matches = context.user_data.get('search_matches', [])
-        index = context.user_data.get('search_index', 0)
-        match = matches[index]
         
-        await query.message.edit_text(f"<b>{match['name']}</b> statistikasi yuklanmoqda...", parse_mode='HTML')
-        await send_product_statistics(query.message, match['id'], match['name'])
-        return ConversationHandler.END
+        if index < len(matches):
+            match = matches[index]
+            await query.message.edit_text(f"<b>{match['name']}</b> statistikasi yuklanmoqda...", parse_mode='HTML')
+            await send_product_statistics(query.message, match['id'], match['name'])
+            return ConversationHandler.END
 
 async def send_product_statistics(message_obj, product_id, name):
     try:

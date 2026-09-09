@@ -613,7 +613,7 @@ async def show_orikzor_product_match(update: Update, context: ContextTypes.DEFAU
     keyboard = [[]]
     for i, match in enumerate(batch):
         idx = index + i + 1
-        text += f"{idx}. {match['name']}\\n"
+        text += f"<b>{idx}.</b> {match['name']}\n\n"
         keyboard[0].append(InlineKeyboardButton(str(idx), callback_data=f"oconfirm_{i}"))
         
     keyboard.append([InlineKeyboardButton("Bu emas ❌", callback_data="oconfirm_next")])

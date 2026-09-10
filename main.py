@@ -74,6 +74,11 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
             file = await context.bot.get_file(photo.file_id)
             image_path = f"temp_image_{update.effective_user.id}.jpg"
             await file.download_to_drive(image_path)
+        elif update.message.document and update.message.document.mime_type and update.message.document.mime_type.startswith('image/'):
+            doc = update.message.document
+            file = await context.bot.get_file(doc.file_id)
+            image_path = f"temp_image_{update.effective_user.id}.jpg"
+            await file.download_to_drive(image_path)
             
         response = await ai_assistant.get_response(text, update.effective_user.id, image_path)
         
@@ -713,7 +718,7 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
-            MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND, handle_ai_or_atchot),
+            MessageHandler((filters.TEXT | filters.PHOTO | filters.Document.IMAGE) & ~filters.COMMAND, handle_ai_or_atchot),
             CallbackQueryHandler(menu_callback, pattern='^(menu_|orikzor_by_)'),
             CallbackQueryHandler(handle_company_selection, pattern='^comp_'),
             CallbackQueryHandler(handle_orikzor_month_callback, pattern='^omonth_'),

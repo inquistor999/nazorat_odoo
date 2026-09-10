@@ -87,8 +87,9 @@ class AIAssistant:
         import asyncio
         import PIL.Image
         import time
+        import re
         def run_gemini():
-            retries = 3
+            retries = 5
             for attempt in range(retries):
                 try:
                     if user_id not in self.user_chats:
@@ -108,7 +109,13 @@ class AIAssistant:
                 except Exception as e:
                     error_msg = str(e)
                     if "429" in error_msg and attempt < retries - 1:
-                        time.sleep(4)  # Limitga tushib qolsa 4 soniya kutib qayta urinamiz
+                        # Find "retry in 12.49s" pattern
+                        match = re.search(r"retry in (\d+(?:\.\d+)?)s", error_msg)
+                        if match:
+                            wait_time = float(match.group(1)) + 1.0
+                        else:
+                            wait_time = 15.0
+                        time.sleep(wait_time)
                         continue
                     return f"Gemini Xatosi: {e}"
         return await asyncio.to_thread(run_gemini)

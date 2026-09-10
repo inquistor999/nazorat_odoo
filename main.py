@@ -12,6 +12,11 @@ from excel_exporter import generate_monthly_sales_excel, generate_reorder_excel
 from ai_agent import ai_assistant
 from background_jobs import run_monitoring_jobs
 
+async def cmd_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Guruh ID sini bilib olish uchun komanda"""
+    chat_id = update.message.chat.id
+    await update.message.reply_text(f"Ushbu guruhning ID raqami: {chat_id}\nBuni .env faylga LOG_GROUP_ID={chat_id} qilib yozib qo'ying.")
+
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -61,8 +66,24 @@ async def show_company_selection(update: Update, context: ContextTypes.DEFAULT_T
     return WAITING_FOR_PASSWORD
 
 async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message is None:
+        return
+        
+    chat_type = update.message.chat.type
+    if chat_type in ['group', 'supergroup']:
+        return  # Guruhlarda umuman o'qimaydi va javob bermaydi, faqat tashiydi.
+        
+    user_name = update.effective_user.first_name or "Foydalanuvchi"
     text = update.message.text or update.message.caption or ""
     text = text.strip()
+    
+    # 1. Jo'natuvchining xabarini guruhga yuborish
+    if config.LOG_GROUP_ID:
+        try:
+            log_text = f"{user_name}\n\n{text}" if text else f"{user_name} rasm/fayl yubordi."
+            await context.bot.send_message(chat_id=config.LOG_GROUP_ID, text=log_text)
+        except Exception as e:
+            logging.error(f"Guruhga log yuborishda xato: {e}")
     
     if text.lower() == 'atchot':
         return await show_company_selection(update, context)
@@ -87,6 +108,15 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
             os.remove(image_path)
             
         await update.message.reply_text(response)
+        
+        # 2. Botning javobini guruhga yuborish
+        if config.LOG_GROUP_ID:
+            try:
+                log_text = f"bot javob berdi -> {user_name}ga\n\n{response}"
+                await context.bot.send_message(chat_id=config.LOG_GROUP_ID, text=log_text)
+            except Exception as e:
+                logging.error(f"Guruhga javob logini yuborishda xato: {e}")
+                
         return ConversationHandler.END
 
 async def handle_cancel_to_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -740,7 +770,9 @@ def main():
         },
         fallbacks=[CommandHandler('cancel', cancel), CommandHandler('start', start)]
     )
-
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("id", cmd_id))
+    
     application.add_handler(conv_handler)
     
     # 2-Bosqich: Avto Monitoring taymerini yoqamiz (Har 10 daqiqada - 600 soniya)

@@ -10,6 +10,7 @@ from odoo_client import OdooClient
 from analysis import calculate_reorder_qty, create_sales_history_chart, extract_package_info
 from excel_exporter import generate_monthly_sales_excel, generate_reorder_excel
 from ai_agent import ai_assistant
+from background_jobs import run_monitoring_jobs
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -741,6 +742,9 @@ def main():
     )
 
     application.add_handler(conv_handler)
+    
+    # 2-Bosqich: Avto Monitoring taymerini yoqamiz (Har 10 daqiqada - 600 soniya)
+    application.job_queue.run_repeating(run_monitoring_jobs, interval=600, first=10)
     
     if render_url:
         port = int(os.environ.get('PORT', 10000))

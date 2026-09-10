@@ -10,6 +10,7 @@ ODOO_URL = os.getenv("ODOO_URL")
 ODOO_DB = os.getenv("ODOO_DB")
 ODOO_USERNAME = os.getenv("ODOO_USERNAME")
 ODOO_PASSWORD = os.getenv("ODOO_PASSWORD")
+ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
 
 def get_tracked_product_names():
     try:

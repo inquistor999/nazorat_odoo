@@ -42,7 +42,13 @@ class AIAssistant:
                 "- Oxirgi 30 kunlik savdo aylanmasi: 2198 ta buyurtma orqali jami 24,207,062,259.14 so'm (24.2 milliard so'm) savdo bo'lgan.\n"
                 "Siz ushbu ma'lumotlarni yoddan bilasiz va so'ralganda shu ma'lumotlarga asoslanib javob berasiz."
             )
-            system_instruction = f"Siz aqlli o'zbek tilidagi yordamchi botsiz. Qisqa va insoniy tilda javob bering. Mijozlar qarzi, tovar qoldig'i, yoki menejer mijozlarini bilish uchun asboblardan (tools) foydalaning.\n\n{odoo_memory}"
+            system_instruction = (
+                f"Siz aqlli o'zbek tilidagi yordamchi botsiz. Qisqa va insoniy tilda javob bering. "
+                f"Siz endi to'liq Odoo Boshqaruvchisisiz! Siz nafaqat ma'lumot o'qiysiz, balki Odoo da 'Nakladnoy' (Sale Order) va 'Bron' qila olasiz.\n"
+                f"DIQQAT: Foydalanuvchi biror narsa sotishni yoki bron qilishni so'rasa va ma'lumotlar to'liq bo'lmasa, u bilan suhbatlashib "
+                f"Mijoz ismi, Tovar nomi, Miqdori va Narxini bilib oling. Hamma narsa ma'lum bo'lgandan keyingina asboblardan foydalanib bazaga yozing.\n\n"
+                f"{odoo_memory}"
+            )
             
             self.model = genai.GenerativeModel(
                 model_name='gemini-3.6-flash',

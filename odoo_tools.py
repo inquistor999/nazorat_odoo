@@ -95,5 +95,33 @@ def get_manager_clients_count(manager_name: str) -> str:
     except Exception as e:
         return f"Xatolik yuz berdi: {e}"
 
+def create_sale_order(client_name: str, product_name: str, qty: float, price: float) -> str:
+    """
+    Odoo'da avtomatik ravishda Sale Order (Sotuv/Nakladnoy) yaratadi. 
+    A/B/C toifadagi mijozlar tekshiriladi, qarz bo'lsa sotuv bloklanadi.
+    Args:
+        client_name: Mijozning ismi.
+        product_name: Sotilayotgan tovar nomi.
+        qty: Tovar miqdori.
+        price: Tovar narxi.
+    Returns:
+        Muvaffaqiyatli yoki xatolik haqida matnli javob.
+    """
+    client = OdooClient()
+    return client.create_sale_order(client_name, product_name, qty, price)
+
+def create_reservation(client_name: str, product_name: str, qty: float) -> str:
+    """
+    Mijoz uchun tovarni bron qiladi. Agar "Free to use" (Erkin qoldiq) da tovar yetsa, bron qilinadi.
+    Args:
+        client_name: Mijoz ismi.
+        product_name: Tovar nomi.
+        qty: Tovar miqdori.
+    Returns:
+        Muvaffaqiyatli bron qilingani yoki xatolik haqida matnli javob.
+    """
+    client = OdooClient()
+    return client.create_reservation(client_name, product_name, qty)
+
 # Asboblar ro'yxati (Gemini ga berish uchun)
-odoo_tools_list = [get_client_debt, get_product_stock, get_manager_clients_count]
+odoo_tools_list = [get_client_debt, get_product_stock, get_manager_clients_count, create_sale_order, create_reservation]

@@ -443,6 +443,23 @@ class OdooClient:
         today_str = datetime.now().strftime('%Y-%m-%d 00:00:00')
         try:
             sales = self._exec('sale.order', 'search_read', [('date_order', '>=', today_str), ('state', 'in', ['sale', 'done'])], ['amount_total', 'company_id'])
+
+    def get_general_stats(self):
+        """Odoo dan umumiy qiziqarli statistikalarni oladi"""
+        stats = []
+        
+        # 1. Xodimlar soni
+        try:
+            emp_count = self.models.execute_kw(self.db, self.uid, self.password, 'hr.employee', 'search_count', [[]])
+            stats.append(f"Jami xodimlar soni: {emp_count} ta")
+        except Exception:
+            pass
+
+        # 2. Bugungi sotuvlar
+        from datetime import datetime
+        today_str = datetime.now().strftime('%Y-%m-%d 00:00:00')
+        try:
+            sales = self._exec('sale.order', 'search_read', [('date_order', '>=', today_str), ('state', 'in', ['sale', 'done'])], ['amount_total', 'company_id'])
             total_sum = sum(s.get('amount_total', 0) for s in sales)
             stats.append(f"Bugungi jami sotuvlar summasi: {total_sum} sum")
         except Exception:
@@ -452,3 +469,94 @@ class OdooClient:
             return "Hech qanday statistika topilmadi yoki ruxsat yo'q."
             
         return "\n".join(stats)
+
+    def create_sale_order(self, client_name: str, product_name: str, qty: float, price: float) -> str:
+        """
+        Odoo'da avtomatik ravishda Sale Order (Sotuv) yaratadi.
+        """
+        try:
+            partner = self.models.execute_kw(self.db, self.uid, self.password,
+                'res.partner', 'search_read',
+                [[('name', 'ilike', client_name)]],
+                {'limit': 1, 'fields': ['id', 'name', 'x_studio_category', 'total_overdue']})
+            if not partner:
+                return f"Xato: '{client_name}' ismli mijoz topilmadi."
+            p = partner[0]
+            
+            category = p.get('x_studio_category', 'Noma\'lum')
+            overdue = p.get('total_overdue', 0)
+            if category in ['B', 'C'] and overdue > 10:
+                return f"DIQQAT: {p['name']} ({category} toifa) da {overdue:,.2f} $ muddati o'tgan qarz bor! Prodaja urish taqiqlandi."
+                
+            product = self.models.execute_kw(self.db, self.uid, self.password,
+                'product.product', 'search_read',
+                [[('name', 'ilike', product_name)]],
+                {'limit': 1, 'fields': ['id', 'name', 'virtual_available']})
+            if not product:
+                return f"Xato: '{product_name}' nomli tovar topilmadi."
+            pr = product[0]
+            
+            if pr.get('virtual_available', 0) < float(qty):
+                return f"Xato: Omborda yetarli erkin qoldiq yo'q. Erkin qoldiq: {pr.get('virtual_available', 0)}"
+                
+            sale_id = self.models.execute_kw(self.db, self.uid, self.password,
+                'sale.order', 'create', [{'partner_id': p['id']}])
+                
+            self.models.execute_kw(self.db, self.uid, self.password,
+                'sale.order.line', 'create', [{
+                    'order_id': sale_id,
+                    'product_id': pr['id'],
+                    'product_uom_qty': float(qty),
+                    'price_unit': float(price)
+                }])
+                
+            self.models.execute_kw(self.db, self.uid, self.password,
+                'sale.order', 'action_confirm', [[sale_id]])
+                
+            return f"✅ Muvaffaqiyatli! {p['name']} ga {qty} ta {pr['name']} sotildi va tasdiqlandi. (Nakladnoy ID: {sale_id})"
+        except Exception as e:
+            return f"Odoo xatosi: {e}"
+
+    def create_reservation(self, client_name: str, product_name: str, qty: float) -> str:
+        """
+        Mijoz uchun tovarni bron qiladi (Draft Sale Order orqali zaxira qilib bo'lmaydi, biz uni tasdiqlangan va yetkazib berishsiz holatda saqlaymiz yoki mijoz qarzlarini e'tiborga olmaymiz)
+        Bron qilish bu xuddi prodajaga o'xshaydi, lekin qarz cheklovsiz.
+        """
+        try:
+            partner = self.models.execute_kw(self.db, self.uid, self.password,
+                'res.partner', 'search_read',
+                [[('name', 'ilike', client_name)]],
+                {'limit': 1, 'fields': ['id', 'name']})
+            if not partner:
+                return f"Xato: '{client_name}' ismli mijoz topilmadi."
+            p = partner[0]
+            
+            product = self.models.execute_kw(self.db, self.uid, self.password,
+                'product.product', 'search_read',
+                [[('name', 'ilike', product_name)]],
+                {'limit': 1, 'fields': ['id', 'name', 'virtual_available', 'lst_price']})
+            if not product:
+                return f"Xato: '{product_name}' nomli tovar topilmadi."
+            pr = product[0]
+            
+            if pr.get('virtual_available', 0) < float(qty):
+                return f"Xato: Omborda yetarli erkin qoldiq yo'q. Erkin qoldiq: {pr.get('virtual_available', 0)}"
+                
+            sale_id = self.models.execute_kw(self.db, self.uid, self.password,
+                'sale.order', 'create', [{'partner_id': p['id']}])
+                
+            self.models.execute_kw(self.db, self.uid, self.password,
+                'sale.order.line', 'create', [{
+                    'order_id': sale_id,
+                    'product_id': pr['id'],
+                    'product_uom_qty': float(qty),
+                    'price_unit': pr.get('lst_price', 0)
+                }])
+                
+            # Bron uchun confirm qilamiz, toki tovar free to use dan olib tashlansin
+            self.models.execute_kw(self.db, self.uid, self.password,
+                'sale.order', 'action_confirm', [[sale_id]])
+                
+            return f"🛡 Muvaffaqiyatli! {qty} ta {pr['name']} tovari {p['name']} uchun bron qilindi (Sotuv ID: {sale_id})."
+        except Exception as e:
+            return f"Odoo xatosi: {e}"

@@ -102,15 +102,16 @@ class AIAssistant:
                         self.user_chats[user_id] = self.model.start_chat(enable_automatic_function_calling=True)
                     chat = self.user_chats[user_id]
                     
-                    content = [prompt]
                     if image_path:
                         try:
                             img = PIL.Image.open(image_path)
-                            content.append(img)
+                            response = self.model.generate_content([prompt, img])
+                            return response.text
                         except Exception as e:
                             logging.error(f"Rasm ochishda xato: {e}")
+                            return f"Rasm tahlil qilishda xato: {e}"
                     
-                    response = chat.send_message(content)
+                    response = chat.send_message([prompt])
                     return response.text
                 except Exception as e:
                     error_msg = str(e)
@@ -141,7 +142,7 @@ class AIAssistant:
             context += f"Odoo bazasidan hozir olingan ma'lumot:\n{odoo_data}\n"
             
         # 3. Internet qidiramiz
-        if not context:
+        if not context and text:
             web_data = search_internet(text)
             if web_data:
                 context += f"Internetdan qidirilgan ma'lumot:\n{web_data}\n"

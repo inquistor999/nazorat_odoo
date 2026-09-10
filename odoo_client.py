@@ -458,6 +458,12 @@ class OdooClient:
         Odoo'da avtomatik ravishda Sale Order (Sotuv) yaratadi.
         """
         try:
+            qty_f = float(qty)
+            price_f = float(price)
+        except ValueError:
+            return "Xato: Miqdor va narx raqam bo'lishi kerak."
+            
+        try:
             partner = self.models.execute_kw(self.db, self.uid, self.password,
                 'res.partner', 'search_read',
                 [[('name', 'ilike', client_name)]],
@@ -479,7 +485,7 @@ class OdooClient:
                 return f"Xato: '{product_name}' nomli tovar topilmadi."
             pr = product[0]
             
-            if pr.get('virtual_available', 0) < float(qty):
+            if pr.get('virtual_available', 0) < qty_f:
                 return f"Xato: Omborda yetarli erkin qoldiq yo'q. Erkin qoldiq: {pr.get('virtual_available', 0)}"
                 
             sale_id = self.models.execute_kw(self.db, self.uid, self.password,
@@ -489,14 +495,14 @@ class OdooClient:
                 'sale.order.line', 'create', [{
                     'order_id': sale_id,
                     'product_id': pr['id'],
-                    'product_uom_qty': float(qty),
-                    'price_unit': float(price)
+                    'product_uom_qty': qty_f,
+                    'price_unit': price_f
                 }])
                 
             self.models.execute_kw(self.db, self.uid, self.password,
                 'sale.order', 'action_confirm', [[sale_id]])
                 
-            return f"✅ Muvaffaqiyatli! {p['name']} ga {qty} ta {pr['name']} sotildi va tasdiqlandi. (Nakladnoy ID: {sale_id})"
+            return f"✅ Muvaffaqiyatli! {p['name']} ga {qty_f} ta {pr['name']} sotildi va tasdiqlandi. (Nakladnoy ID: {sale_id})"
         except Exception as e:
             return f"Odoo xatosi: {e}"
 
@@ -505,6 +511,11 @@ class OdooClient:
         Mijoz uchun tovarni bron qiladi (Draft Sale Order orqali zaxira qilib bo'lmaydi, biz uni tasdiqlangan va yetkazib berishsiz holatda saqlaymiz yoki mijoz qarzlarini e'tiborga olmaymiz)
         Bron qilish bu xuddi prodajaga o'xshaydi, lekin qarz cheklovsiz.
         """
+        try:
+            qty_f = float(qty)
+        except ValueError:
+            return "Xato: Miqdor raqam bo'lishi kerak."
+            
         try:
             partner = self.models.execute_kw(self.db, self.uid, self.password,
                 'res.partner', 'search_read',
@@ -522,7 +533,7 @@ class OdooClient:
                 return f"Xato: '{product_name}' nomli tovar topilmadi."
             pr = product[0]
             
-            if pr.get('virtual_available', 0) < float(qty):
+            if pr.get('virtual_available', 0) < qty_f:
                 return f"Xato: Omborda yetarli erkin qoldiq yo'q. Erkin qoldiq: {pr.get('virtual_available', 0)}"
                 
             sale_id = self.models.execute_kw(self.db, self.uid, self.password,
@@ -532,7 +543,7 @@ class OdooClient:
                 'sale.order.line', 'create', [{
                     'order_id': sale_id,
                     'product_id': pr['id'],
-                    'product_uom_qty': float(qty),
+                    'product_uom_qty': qty_f,
                     'price_unit': pr.get('lst_price', 0)
                 }])
                 
@@ -540,6 +551,6 @@ class OdooClient:
             self.models.execute_kw(self.db, self.uid, self.password,
                 'sale.order', 'action_confirm', [[sale_id]])
                 
-            return f"🛡 Muvaffaqiyatli! {qty} ta {pr['name']} tovari {p['name']} uchun bron qilindi (Sotuv ID: {sale_id})."
+            return f"🛡 Muvaffaqiyatli! {qty_f} ta {pr['name']} tovari {p['name']} uchun bron qilindi (Sotuv ID: {sale_id})."
         except Exception as e:
             return f"Odoo xatosi: {e}"

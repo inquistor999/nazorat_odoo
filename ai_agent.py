@@ -67,11 +67,12 @@ class AIAssistant:
                 best_match = stored_a
         return best_match
         
-    async def generate_response(self, prompt: str):
+    async def generate_response(self, prompt: str, image_path: str = None):
         if not self.model:
             return "⚠️ GEMINI_API_KEY topilmadi! Iltimos .env ga kalitni kiriting."
             
         import asyncio
+        import PIL.Image
         def run_gemini():
             try:
                 odoo_memory = (
@@ -85,17 +86,27 @@ class AIAssistant:
                 )
                 system_instruction = f"Siz aqlli o'zbek tilidagi yordamchi botsiz. Qisqa va insoniy tilda javob bering. Mijozlar qarzi, tovar qoldig'i, yoki menejer mijozlarini bilish uchun asboblardan (tools) foydalaning.\n\n{odoo_memory}"
                 chat = self.model.start_chat(enable_automatic_function_calling=True)
-                response = chat.send_message(f"DIQQAT YURIQNOMA: {system_instruction}\n\nSAVOL: {prompt}")
+                
+                content = [f"DIQQAT YURIQNOMA: {system_instruction}\n\nSAVOL: {prompt}"]
+                if image_path:
+                    try:
+                        img = PIL.Image.open(image_path)
+                        content.append(img)
+                    except Exception as e:
+                        logging.error(f"Rasm ochishda xato: {e}")
+                
+                response = chat.send_message(content)
                 return response.text
             except Exception as e:
                 return f"Gemini Xatosi: {e}"
         return await asyncio.to_thread(run_gemini)
 
-    async def get_response(self, text: str, user_id: int) -> str:
+    async def get_response(self, text: str, user_id: int, image_path: str = None) -> str:
         # 1. Xotirani tekshiramiz
-        mem_ans = self.find_in_memory(text)
-        if mem_ans:
-            return mem_ans
+        if not image_path:
+            mem_ans = self.find_in_memory(text)
+            if mem_ans:
+                return mem_ans
             
         context = ""
         # 2. Odoo statistikasimi?
@@ -116,10 +127,10 @@ class AIAssistant:
         else:
             prompt = text
             
-        ans = await self.generate_response(prompt)
+        ans = await self.generate_response(prompt, image_path)
         
         # 5. Xotiraga saqlash
-        if "Xatosi" not in ans and "GEMINI_API_KEY" not in ans:
+        if "Xatosi" not in ans and "GEMINI_API_KEY" not in ans and not image_path:
             self.memory[text] = ans
             self.save_memory()
             

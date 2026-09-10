@@ -86,24 +86,31 @@ class AIAssistant:
             
         import asyncio
         import PIL.Image
+        import time
         def run_gemini():
-            try:
-                if user_id not in self.user_chats:
-                    self.user_chats[user_id] = self.model.start_chat(enable_automatic_function_calling=True)
-                chat = self.user_chats[user_id]
-                
-                content = [prompt]
-                if image_path:
-                    try:
-                        img = PIL.Image.open(image_path)
-                        content.append(img)
-                    except Exception as e:
-                        logging.error(f"Rasm ochishda xato: {e}")
-                
-                response = chat.send_message(content)
-                return response.text
-            except Exception as e:
-                return f"Gemini Xatosi: {e}"
+            retries = 3
+            for attempt in range(retries):
+                try:
+                    if user_id not in self.user_chats:
+                        self.user_chats[user_id] = self.model.start_chat(enable_automatic_function_calling=True)
+                    chat = self.user_chats[user_id]
+                    
+                    content = [prompt]
+                    if image_path:
+                        try:
+                            img = PIL.Image.open(image_path)
+                            content.append(img)
+                        except Exception as e:
+                            logging.error(f"Rasm ochishda xato: {e}")
+                    
+                    response = chat.send_message(content)
+                    return response.text
+                except Exception as e:
+                    error_msg = str(e)
+                    if "429" in error_msg and attempt < retries - 1:
+                        time.sleep(4)  # Limitga tushib qolsa 4 soniya kutib qayta urinamiz
+                        continue
+                    return f"Gemini Xatosi: {e}"
         return await asyncio.to_thread(run_gemini)
 
     async def get_response(self, text: str, user_id: int, image_path: str = None) -> str:

@@ -35,7 +35,7 @@ async def run_monitoring_jobs(context: ContextTypes.DEFAULT_TYPE):
     if 'notified_pickings' not in memory:
         memory['notified_pickings'] = []
         
-    ten_mins_ago = (datetime.now() - timedelta(minutes=10)).strftime('%Y-%m-%d %H:%M:%S')
+    ten_mins_ago = (datetime.utcnow() - timedelta(minutes=10)).strftime('%Y-%m-%d %H:%M:%S')
     alerts_to_send = []
     
     # 1. Sebestoimost nazorati (Tannarxdan arzon sotuv)

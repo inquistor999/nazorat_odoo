@@ -744,7 +744,10 @@ def main():
     application.add_handler(conv_handler)
     
     # 2-Bosqich: Avto Monitoring taymerini yoqamiz (Har 10 daqiqada - 600 soniya)
-    application.job_queue.run_repeating(run_monitoring_jobs, interval=600, first=10)
+    if application.job_queue:
+        application.job_queue.run_repeating(run_monitoring_jobs, interval=600, first=10)
+    else:
+        print("DIQQAT: 'apscheduler' o'rnatilmaganligi sababli fon ishlari yoqilmadi. 'pip install apscheduler' ni ishlating.")
     
     if render_url:
         port = int(os.environ.get('PORT', 10000))

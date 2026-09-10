@@ -4,6 +4,7 @@ import logging
 from duckduckgo_search import DDGS
 from odoo_client import OdooClient
 import google.generativeai as genai
+from odoo_tools import odoo_tools_list
 
 def get_odoo_stats():
     """Odoo bazasidan umumiy statistikalarni olib beradi"""
@@ -31,7 +32,10 @@ class AIAssistant:
         self.api_key = os.getenv("GEMINI_API_KEY")
         if self.api_key:
             genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel('gemini-3.6-flash')
+            self.model = genai.GenerativeModel(
+                model_name='gemini-3.6-flash',
+                tools=odoo_tools_list
+            )
         else:
             self.model = None
         
@@ -79,8 +83,8 @@ class AIAssistant:
                     "- Oxirgi 30 kunlik savdo aylanmasi: 2198 ta buyurtma orqali jami 24,207,062,259.14 so'm (24.2 milliard so'm) savdo bo'lgan.\n"
                     "Siz ushbu ma'lumotlarni yoddan bilasiz va so'ralganda shu ma'lumotlarga asoslanib javob berasiz."
                 )
-                system_instruction = f"Siz aqlli o'zbek tilidagi yordamchi botsiz. Qisqa va insoniy tilda javob bering.\n\n{odoo_memory}"
-                chat = self.model.start_chat()
+                system_instruction = f"Siz aqlli o'zbek tilidagi yordamchi botsiz. Qisqa va insoniy tilda javob bering. Mijozlar qarzi, tovar qoldig'i, yoki menejer mijozlarini bilish uchun asboblardan (tools) foydalaning.\n\n{odoo_memory}"
+                chat = self.model.start_chat(enable_automatic_function_calling=True)
                 response = chat.send_message(f"DIQQAT YURIQNOMA: {system_instruction}\n\nSAVOL: {prompt}")
                 return response.text
             except Exception as e:

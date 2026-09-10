@@ -28,13 +28,26 @@ class AIAssistant:
     def __init__(self):
         self.memory_file = "memory.json"
         self.memory = self.load_memory()
+        self.user_chats = {}
         
         self.api_key = os.getenv("GEMINI_API_KEY")
         if self.api_key:
             genai.configure(api_key=self.api_key)
+            odoo_memory = (
+                "Kompaniyaning Odoo bazasi haqida ma'lumotlar:\n"
+                "- O'rnatilgan modullar soni: 271\n"
+                "- Jami xodimlar/menejerlar (ichki foydalanuvchilar): 33 ta (jumladan: Behzod, Xasan, Samandar, Sunnat, Administrator, Sardor, Akmalxon, Sanjar, Ibrohim, Dilshod, Shahzod, Bahrom, Shoxrux, Oybek, Abdulaziz, Umid, Qaxramon, Shavkat, Mahmud, Jasur, Islom, Abduvohidjon, Nodir, Mirahmad, Ozodbek, Nodirjon, Saidvali, Zafar, Elmurod, Umar, Shuxrat)\n"
+                "- Umumiy kontaktlar (mijozlar/hamkorlar) soni: 3662\n"
+                "- Jami tovarlar/mahsulotlar soni: 1283\n"
+                "- Oxirgi 30 kunlik savdo aylanmasi: 2198 ta buyurtma orqali jami 24,207,062,259.14 so'm (24.2 milliard so'm) savdo bo'lgan.\n"
+                "Siz ushbu ma'lumotlarni yoddan bilasiz va so'ralganda shu ma'lumotlarga asoslanib javob berasiz."
+            )
+            system_instruction = f"Siz aqlli o'zbek tilidagi yordamchi botsiz. Qisqa va insoniy tilda javob bering. Mijozlar qarzi, tovar qoldig'i, yoki menejer mijozlarini bilish uchun asboblardan (tools) foydalaning.\n\n{odoo_memory}"
+            
             self.model = genai.GenerativeModel(
                 model_name='gemini-3.6-flash',
-                tools=odoo_tools_list
+                tools=odoo_tools_list,
+                system_instruction=system_instruction
             )
         else:
             self.model = None
@@ -67,7 +80,7 @@ class AIAssistant:
                 best_match = stored_a
         return best_match
         
-    async def generate_response(self, prompt: str, image_path: str = None):
+    async def generate_response(self, prompt: str, user_id: int, image_path: str = None):
         if not self.model:
             return "⚠️ GEMINI_API_KEY topilmadi! Iltimos .env ga kalitni kiriting."
             
@@ -75,19 +88,11 @@ class AIAssistant:
         import PIL.Image
         def run_gemini():
             try:
-                odoo_memory = (
-                    "Kompaniyaning Odoo bazasi haqida ma'lumotlar:\n"
-                    "- O'rnatilgan modullar soni: 271\n"
-                    "- Jami xodimlar/menejerlar (ichki foydalanuvchilar): 33 ta (jumladan: Behzod, Xasan, Samandar, Sunnat, Administrator, Sardor, Akmalxon, Sanjar, Ibrohim, Dilshod, Shahzod, Bahrom, Shoxrux, Oybek, Abdulaziz, Umid, Qaxramon, Shavkat, Mahmud, Jasur, Islom, Abduvohidjon, Nodir, Mirahmad, Ozodbek, Nodirjon, Saidvali, Zafar, Elmurod, Umar, Shuxrat)\n"
-                    "- Umumiy kontaktlar (mijozlar/hamkorlar) soni: 3662\n"
-                    "- Jami tovarlar/mahsulotlar soni: 1283\n"
-                    "- Oxirgi 30 kunlik savdo aylanmasi: 2198 ta buyurtma orqali jami 24,207,062,259.14 so'm (24.2 milliard so'm) savdo bo'lgan.\n"
-                    "Siz ushbu ma'lumotlarni yoddan bilasiz va so'ralganda shu ma'lumotlarga asoslanib javob berasiz."
-                )
-                system_instruction = f"Siz aqlli o'zbek tilidagi yordamchi botsiz. Qisqa va insoniy tilda javob bering. Mijozlar qarzi, tovar qoldig'i, yoki menejer mijozlarini bilish uchun asboblardan (tools) foydalaning.\n\n{odoo_memory}"
-                chat = self.model.start_chat(enable_automatic_function_calling=True)
+                if user_id not in self.user_chats:
+                    self.user_chats[user_id] = self.model.start_chat(enable_automatic_function_calling=True)
+                chat = self.user_chats[user_id]
                 
-                content = [f"DIQQAT YURIQNOMA: {system_instruction}\n\nSAVOL: {prompt}"]
+                content = [prompt]
                 if image_path:
                     try:
                         img = PIL.Image.open(image_path)
@@ -127,7 +132,7 @@ class AIAssistant:
         else:
             prompt = text
             
-        ans = await self.generate_response(prompt, image_path)
+        ans = await self.generate_response(prompt, user_id, image_path)
         
         # 5. Xotiraga saqlash
         if "Xatosi" not in ans and "GEMINI_API_KEY" not in ans and not image_path:

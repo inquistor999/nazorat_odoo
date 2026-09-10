@@ -91,7 +91,7 @@ class AIAssistant:
         # 1. Xotirani tekshiramiz
         mem_ans = self.find_in_memory(text)
         if mem_ans:
-            return f"🧠 Xotiradan:\n{mem_ans}"
+            return mem_ans
             
         context = ""
         # 2. Odoo statistikasimi?

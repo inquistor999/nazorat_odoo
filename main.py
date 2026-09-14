@@ -76,14 +76,8 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_name = update.effective_user.first_name or "Foydalanuvchi"
     text = update.message.text or update.message.caption or ""
     text = text.strip()
-    
-    # 1. Jo'natuvchining xabarini guruhga yuborish
-    if config.LOG_GROUP_ID:
-        try:
-            log_text = f"{user_name}\n\n{text}" if text else f"{user_name} rasm/fayl yubordi."
-            await context.bot.send_message(chat_id=config.LOG_GROUP_ID, text=log_text)
-        except Exception as e:
-            logging.error(f"Guruhga log yuborishda xato: {e}")
+    # Foydalanuvchi xabari saqlanib turiladi va bot javobidan keyin bitta qilib yuboriladi
+    user_msg_text = text if text else "rasm/fayl yubordi."
     
     if text.lower() == 'atchot':
         return await show_company_selection(update, context)
@@ -109,10 +103,10 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
             
         await update.message.reply_text(response)
         
-        # 2. Botning javobini guruhga yuborish
+        # Botning va foydalanuvchining xabarini bitta qilib guruhga yuborish
         if config.LOG_GROUP_ID:
             try:
-                log_text = f"bot javob berdi -> {user_name}ga\n\n{response}"
+                log_text = f"👤 Foydalanuvchi: {user_name}\n💬 Xabar: {user_msg_text}\n\n🤖 Bot javobi:\n{response}"
                 await context.bot.send_message(chat_id=config.LOG_GROUP_ID, text=log_text)
             except Exception as e:
                 logging.error(f"Guruhga javob logini yuborishda xato: {e}")

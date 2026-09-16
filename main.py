@@ -776,7 +776,7 @@ def main():
         connect_timeout=30
     )
 
-        async def send_startup_msg(app):
+    async def send_startup_msg(app):
         grp_id = getattr(config, 'LOG_GROUP_ID', None) or getattr(config, 'ADMIN_CHAT_ID', None)
         if grp_id:
             try:

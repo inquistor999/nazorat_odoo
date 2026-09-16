@@ -25,9 +25,12 @@ async def run_monitoring_jobs(context: ContextTypes.DEFAULT_TYPE):
     """
     Har 10 daqiqada aylanuvchi asosiy monitoring funksiyasi.
     """
-    admin_id = getattr(config, 'ADMIN_CHAT_ID', None)
+    admin_id = getattr(config, 'LOG_GROUP_ID', None)
     if not admin_id:
-        logging.warning("ADMIN_CHAT_ID config faylida topilmadi. Xabarlar yuborilmaydi.")
+        admin_id = getattr(config, 'ADMIN_CHAT_ID', None)
+        
+    if not admin_id:
+        logging.warning("LOG_GROUP_ID va ADMIN_CHAT_ID config faylida topilmadi. Xabarlar yuborilmaydi.")
         return
         
     client = OdooClient()

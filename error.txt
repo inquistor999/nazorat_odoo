@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "<string>", line 5, in <module>
+  File "C:\Users\Umar\Desktop\Code\zakaz oshish odoo\excel_exporter.py", line 134, in generate_monthly_sales_excel
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Umar\AppData\Local\Programs\Python\Python312\Lib\site-packages\pandas\io\excel\_openpyxl.py", line 58, in __init__
+    from openpyxl.workbook import Workbook
+ModuleNotFoundError: No module named 'openpyxl'

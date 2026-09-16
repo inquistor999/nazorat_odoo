@@ -30,9 +30,30 @@ class AIAssistant:
         self.memory = self.load_memory()
         self.user_chats = {}
         
-        self.api_key = os.getenv("GEMINI_API_KEY")
-        if self.api_key:
-            genai.configure(api_key=self.api_key)
+        # Load multiple API keys for rotation
+        self.api_keys = []
+        for k, v in os.environ.items():
+            if k.startswith("GEMINI_API_KEY") and v.strip():
+                self.api_keys.append(v.strip())
+        
+        if not self.api_keys:
+            # try loading standard one just in case
+            key = os.getenv("GEMINI_API_KEY")
+            if key:
+                self.api_keys.append(key)
+                
+        self.current_key_idx = 0
+        self.model_name = 'gemini-1.5-flash'  # Using more stable model with higher limits
+        self.model = None
+        self.system_instruction = ""
+        
+        if self.api_keys:
+            self._setup_model()
+            
+    def _setup_model(self):
+        import google.generativeai as genai
+        self.api_key = self.api_keys[self.current_key_idx]
+        genai.configure(api_key=self.api_key)
             odoo_memory = (
                 "Kompaniyaning Odoo bazasi haqida ma'lumotlar:\n"
                 "- O'rnatilgan modullar soni: 271\n"
@@ -42,7 +63,7 @@ class AIAssistant:
                 "- Oxirgi 30 kunlik savdo aylanmasi: 2198 ta buyurtma orqali jami 24,207,062,259.14 so'm (24.2 milliard so'm) savdo bo'lgan.\n"
                 "Siz ushbu ma'lumotlarni yoddan bilasiz va so'ralganda shu ma'lumotlarga asoslanib javob berasiz."
             )
-            system_instruction = (
+            self.system_instruction = (
                 f"Siz super aqlli o'zbek tilidagi eng mukammal Odoo AI yordamchisiz. Qisqa va insoniy tilda javob bering.\n"
                 f"Siz Odoo da deyarli hamma ishni mustaqil bajara olasiz:\n"
                 f"1. Nakladnoy yaratish (Sotuv): Albatta foydalanuvchidan narx, miqdor va VALYUTA (Dollar, Sum, Perechisleniya) qaysiligini so'rang va tasdiq oling.\n"
@@ -55,9 +76,9 @@ class AIAssistant:
             )
             
             self.model = genai.GenerativeModel(
-                model_name='gemini-3.6-flash',
+                model_name=self.model_name,
                 tools=odoo_tools_list,
-                system_instruction=system_instruction
+                system_instruction=self.system_instruction
             )
         else:
             self.model = None
@@ -99,7 +120,8 @@ class AIAssistant:
         import time
         import re
         def run_gemini():
-            retries = 5
+            retries = max(5, len(self.api_keys) * 2)
+            
             for attempt in range(retries):
                 try:
                     if user_id not in self.user_chats:
@@ -119,15 +141,26 @@ class AIAssistant:
                     return response.text
                 except Exception as e:
                     error_msg = str(e)
-                    if "429" in error_msg and attempt < retries - 1:
-                        # Find "retry in 12.49s" pattern
-                        match = re.search(r"retry in (\d+(?:\.\d+)?)s", error_msg)
-                        if match:
-                            wait_time = float(match.group(1)) + 1.0
+                    if "429" in error_msg:
+                        # 429 Quota Exceeded xatosi
+                        if len(self.api_keys) > 1:
+                            # Agar bir nechta kalit bo'lsa, keyingisiga o'tamiz
+                            self.current_key_idx = (self.current_key_idx + 1) % len(self.api_keys)
+                            self._setup_model()
+                            # Yangi modelda chatni qayta ochamiz
+                            self.user_chats[user_id] = self.model.start_chat(enable_automatic_function_calling=True)
+                            chat = self.user_chats[user_id]
+                            time.sleep(1) # Ozgina kutiladi
+                            continue
                         else:
-                            wait_time = 15.0
-                        time.sleep(wait_time)
-                        continue
+                            # Agar bitta kalit bo'lsa, kutamiz
+                            if attempt < retries - 1:
+                                match = re.search(r"retry in (\d+(?:\.\d+)?)s", error_msg)
+                                wait_time = float(match.group(1)) + 1.0 if match else 10.0
+                                time.sleep(min(wait_time, 20.0)) # Maksimum 20 sek kutamiz
+                                continue
+                            else:
+                                return f"Limit tugadi. Iltimos .env faylga yangi API kalit qo'shing: GEMINI_API_KEY_2=... xatosi: {error_msg}"
                     return f"Gemini Xatosi: {e}"
         return await asyncio.to_thread(run_gemini)
 

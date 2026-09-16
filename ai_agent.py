@@ -43,7 +43,7 @@ class AIAssistant:
                 self.api_keys.append(key)
                 
         self.current_key_idx = 0
-        self.model_name = 'gemini-flash-latest'  # Mavjud bo'lgan eng oxirgi va barqaror model
+        self.model_name = 'gemini-3.5-flash'  # Barqaror limitlarga ega bo'lgan model
         self.model = None
         self.system_instruction = ""
         
@@ -160,6 +160,7 @@ class AIAssistant:
                             else:
                                 return f"Limit tugadi. Iltimos .env faylga yangi API kalit qo'shing: GEMINI_API_KEY_2=... xatosi: {error_msg}"
                     return f"Gemini Xatosi: {e}"
+            return "Limit tugadi. Barcha kalitlarda (API keys) 429 xatosi yuz berdi yoki retries tugadi. Iltimos, keyinroq urinib ko'ring yoki yangi kalit qo'shing."
         return await asyncio.to_thread(run_gemini)
 
     async def get_response(self, text: str, user_id: int, image_path: str = None) -> str:
@@ -176,11 +177,11 @@ class AIAssistant:
             odoo_data = get_odoo_stats()
             context += f"Odoo bazasidan hozir olingan ma'lumot:\n{odoo_data}\n"
             
-        # 3. Internet qidiramiz
-        if not context and text:
-            web_data = search_internet(text)
-            if web_data:
-                context += f"Internetdan qidirilgan ma'lumot:\n{web_data}\n"
+        # 3. Internet qidiramiz (Hozircha o'chirilgan, chunki DDGS qotib qolyapti)
+        # if not context and text:
+        #     web_data = search_internet(text)
+        #     if web_data:
+        #         context += f"Internetdan qidirilgan ma'lumot:\n{web_data}\n"
                 
         # 4. LLM ga jo'natamiz
         if context:

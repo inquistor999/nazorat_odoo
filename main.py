@@ -12,6 +12,30 @@ from excel_exporter import generate_monthly_sales_excel, generate_reorder_excel
 from ai_agent import ai_assistant
 from background_jobs import run_monitoring_jobs
 
+import json
+
+ALLOWED_USERS_FILE = 'allowed_users.json'
+
+def load_allowed_users():
+    if os.path.exists(ALLOWED_USERS_FILE):
+        try:
+            with open(ALLOWED_USERS_FILE, 'r') as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+def save_allowed_user(user_id):
+    users = load_allowed_users()
+    if user_id not in users:
+        users.append(user_id)
+        with open(ALLOWED_USERS_FILE, 'w') as f:
+            json.dump(users, f)
+
+def is_user_allowed(user_id):
+    return user_id in load_allowed_users()
+
+
 async def cmd_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Guruh ID sini bilib olish uchun komanda"""
     chat_id = update.message.chat.id
@@ -42,6 +66,10 @@ async def send_with_retry(send_func, retries=3, delay=3):
                 raise
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_user_allowed(user_id):
+        return ConversationHandler.END
+
     user_name = update.effective_user.first_name if update.effective_user else "foydalanuvchi"
     welcome_text = f"👋 Salom {user_name}! Men yordamchi AI botman. Qanday savolingiz bor?"
     if update.message:
@@ -73,9 +101,19 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
     if chat_type in ['group', 'supergroup']:
         return  # Guruhlarda umuman o'qimaydi va javob bermaydi, faqat tashiydi.
         
-    user_name = update.effective_user.first_name or "Foydalanuvchi"
+    user_id = update.effective_user.id
     text = update.message.text or update.message.caption or ""
     text = text.strip()
+    
+    if text == "login:umar":
+        save_allowed_user(user_id)
+        await update.message.reply_text("✅ Tizimga kirdingiz! Endi botdan to'liq foydalanishingiz mumkin.")
+        return ConversationHandler.END
+        
+    if not is_user_allowed(user_id):
+        return ConversationHandler.END
+        
+    user_name = update.effective_user.first_name or "Foydalanuvchi"
     # Foydalanuvchi xabari saqlanib turiladi va bot javobidan keyin bitta qilib yuboriladi
     user_msg_text = text if text else "rasm/fayl yubordi."
     
@@ -775,6 +813,16 @@ def main():
     else:
         print("DIQQAT: 'apscheduler' o'rnatilmaganligi sababli fon ishlari yoqilmadi. 'pip install apscheduler' ni ishlating.")
     
+    async def send_startup_msg(app):
+        grp_id = getattr(config, 'LOG_GROUP_ID', None) or getattr(config, 'ADMIN_CHAT_ID', None)
+        if grp_id:
+            try:
+                await app.bot.send_message(chat_id=grp_id, text="✅ **Bot ishga tushdi va 24/7 monitoring faol!**", parse_mode='Markdown')
+            except Exception as e:
+                logging.error(f"Startup msg error: {e}")
+                
+    application.post_init = send_startup_msg
+
     if render_url:
         port = int(os.environ.get('PORT', 10000))
         webhook_url = f"{render_url}/{config.TELEGRAM_BOT_TOKEN}"

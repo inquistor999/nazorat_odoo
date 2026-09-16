@@ -54,34 +54,32 @@ class AIAssistant:
         import google.generativeai as genai
         self.api_key = self.api_keys[self.current_key_idx]
         genai.configure(api_key=self.api_key)
-            odoo_memory = (
-                "Kompaniyaning Odoo bazasi haqida ma'lumotlar:\n"
-                "- O'rnatilgan modullar soni: 271\n"
-                "- Jami xodimlar/menejerlar (ichki foydalanuvchilar): 33 ta (jumladan: Behzod, Xasan, Samandar, Sunnat, Administrator, Sardor, Akmalxon, Sanjar, Ibrohim, Dilshod, Shahzod, Bahrom, Shoxrux, Oybek, Abdulaziz, Umid, Qaxramon, Shavkat, Mahmud, Jasur, Islom, Abduvohidjon, Nodir, Mirahmad, Ozodbek, Nodirjon, Saidvali, Zafar, Elmurod, Umar, Shuxrat)\n"
-                "- Umumiy kontaktlar (mijozlar/hamkorlar) soni: 3662\n"
-                "- Jami tovarlar/mahsulotlar soni: 1283\n"
-                "- Oxirgi 30 kunlik savdo aylanmasi: 2198 ta buyurtma orqali jami 24,207,062,259.14 so'm (24.2 milliard so'm) savdo bo'lgan.\n"
-                "Siz ushbu ma'lumotlarni yoddan bilasiz va so'ralganda shu ma'lumotlarga asoslanib javob berasiz."
-            )
-            self.system_instruction = (
-                f"Siz super aqlli o'zbek tilidagi eng mukammal Odoo AI yordamchisiz. Qisqa va insoniy tilda javob bering.\n"
-                f"Siz Odoo da deyarli hamma ishni mustaqil bajara olasiz:\n"
-                f"1. Nakladnoy yaratish (Sotuv): Albatta foydalanuvchidan narx, miqdor va VALYUTA (Dollar, Sum, Perechisleniya) qaysiligini so'rang va tasdiq oling.\n"
-                f"2. Bron: Tovarlarni bron qilishda ham valyuta kerak bo'lsa so'rang. Agar qoldiq yetmasa, universal_odoo_search dan foydalaning yoki get_reservation_details_tool orqali kim bron qilganini tekshirib bering.\n"
-                f"3. Nakladnoy bekor qilish (Cancel): Agar foydalanuvchi 'S39455 ni o'chir' yoki shunga o'xshash desa, cancel_sale_order tool orqali uni bekor qiling.\n"
-                f"4. Intercompany Transfer (Permeshsheniya): Agar u B2B dan O'rikzorga yoki Qo'qonga transfer so'rasa, create_intercompany_transfer_tool dan foydalaning (Sklad-1 id=47, Sklad-2 id=50 deb ishlating). Transfer yaratishdan oldin Odoo erkin qoldiqni (free to use) albatta tekshiring, yetarli bo'lmasa foydalanuvchidan ogohlantirib tasdiq so'rang (masalan: 'Faqat 10 ta qoldi, rostdan ham shuni transfer qilaymi?').\n"
-                f"5. Agar sizdagi tayyor tool lar biror ma'lumotni topa olmasa (masalan, Aktsverka, Xodim maoshi, h.k.), 'universal_odoo_search' tool yordamida tegishli modelni (masalan 'account.move') o'qib javob bering!\n\n"
-                f"DIQQAT: Hamma ishlarni mukammal qiling. Transfer yoki sotuvdan oldin foydalanuvchiga nima qilmoqchi ekanligingizni aytib, aniq ma'lumot bering va tasdiq oling.\n\n"
-                f"{odoo_memory}"
-            )
-            
-            self.model = genai.GenerativeModel(
-                model_name=self.model_name,
-                tools=odoo_tools_list,
-                system_instruction=self.system_instruction
-            )
-        else:
-            self.model = None
+        odoo_memory = (
+            "Kompaniyaning Odoo bazasi haqida ma'lumotlar:\n"
+            "- O'rnatilgan modullar soni: 271\n"
+            "- Jami xodimlar/menejerlar (ichki foydalanuvchilar): 33 ta (jumladan: Behzod, Xasan, Samandar, Sunnat, Administrator, Sardor, Akmalxon, Sanjar, Ibrohim, Dilshod, Shahzod, Bahrom, Shoxrux, Oybek, Abdulaziz, Umid, Qaxramon, Shavkat, Mahmud, Jasur, Islom, Abduvohidjon, Nodir, Mirahmad, Ozodbek, Nodirjon, Saidvali, Zafar, Elmurod, Umar, Shuxrat)\n"
+            "- Umumiy kontaktlar (mijozlar/hamkorlar) soni: 3662\n"
+            "- Jami tovarlar/mahsulotlar soni: 1283\n"
+            "- Oxirgi 30 kunlik savdo aylanmasi: 2198 ta buyurtma orqali jami 24,207,062,259.14 so'm (24.2 milliard so'm) savdo bo'lgan.\n"
+            "Siz ushbu ma'lumotlarni yoddan bilasiz va so'ralganda shu ma'lumotlarga asoslanib javob berasiz."
+        )
+        self.system_instruction = (
+            f"Siz super aqlli o'zbek tilidagi eng mukammal Odoo AI yordamchisiz. Qisqa va insoniy tilda javob bering.\n"
+            f"Siz Odoo da deyarli hamma ishni mustaqil bajara olasiz:\n"
+            f"1. Nakladnoy yaratish (Sotuv): Albatta foydalanuvchidan narx, miqdor va VALYUTA (Dollar, Sum, Perechisleniya) qaysiligini so'rang va tasdiq oling.\n"
+            f"2. Bron: Tovarlarni bron qilishda ham valyuta kerak bo'lsa so'rang. Agar qoldiq yetmasa, universal_odoo_search dan foydalaning yoki get_reservation_details_tool orqali kim bron qilganini tekshirib bering.\n"
+            f"3. Nakladnoy bekor qilish (Cancel): Agar foydalanuvchi 'S39455 ni o'chir' yoki shunga o'xshash desa, cancel_sale_order tool orqali uni bekor qiling.\n"
+            f"4. Intercompany Transfer (Permeshsheniya): Agar u B2B dan O'rikzorga yoki Qo'qonga transfer so'rasa, create_intercompany_transfer_tool dan foydalaning (Sklad-1 id=47, Sklad-2 id=50 deb ishlating). Transfer yaratishdan oldin Odoo erkin qoldiqni (free to use) albatta tekshiring, yetarli bo'lmasa foydalanuvchidan ogohlantirib tasdiq so'rang (masalan: 'Faqat 10 ta qoldi, rostdan ham shuni transfer qilaymi?').\n"
+            f"5. Agar sizdagi tayyor tool lar biror ma'lumotni topa olmasa (masalan, Aktsverka, Xodim maoshi, h.k.), 'universal_odoo_search' tool yordamida tegishli modelni (masalan 'account.move') o'qib javob bering!\n\n"
+            f"DIQQAT: Hamma ishlarni mukammal qiling. Transfer yoki sotuvdan oldin foydalanuvchiga nima qilmoqchi ekanligingizni aytib, aniq ma'lumot bering va tasdiq oling.\n\n"
+            f"{odoo_memory}"
+        )
+        
+        self.model = genai.GenerativeModel(
+            model_name=self.model_name,
+            tools=odoo_tools_list,
+            system_instruction=self.system_instruction
+        )
         
     def load_memory(self):
         if os.path.exists(self.memory_file):

@@ -43,7 +43,7 @@ class AIAssistant:
                 self.api_keys.append(key)
                 
         self.current_key_idx = 0
-        self.model_name = 'gemini-1.5-flash'  # Using more stable model with higher limits
+        self.model_name = 'gemini-flash-latest'  # Mavjud bo'lgan eng oxirgi va barqaror model
         self.model = None
         self.system_instruction = ""
         

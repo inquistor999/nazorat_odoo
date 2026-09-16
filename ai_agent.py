@@ -43,7 +43,7 @@ class AIAssistant:
                 self.api_keys.append(key)
                 
         self.current_key_idx = 0
-        self.model_name = 'gemini-3.5-flash'  # Barqaror limitlarga ega bo'lgan model
+        self.model_name = 'gemini-2.5-flash'  # Barqaror limitlarga ega bo'lgan model
         self.model = None
         self.system_instruction = ""
         

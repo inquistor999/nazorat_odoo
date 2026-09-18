@@ -136,8 +136,13 @@ class AIAssistant:
                             
                     if voice_path:
                         try:
-                            audio_file = genai.upload_file(path=voice_path)
-                            response = chat.send_message([prompt, audio_file])
+                            with open(voice_path, "rb") as f_voice:
+                                audio_bytes = f_voice.read()
+                            audio_part = {
+                                "mime_type": "audio/ogg",
+                                "data": audio_bytes
+                            }
+                            response = chat.send_message([prompt, audio_part])
                             return response.text
                         except Exception as e:
                             logging.error(f"Ovozli fayl yuklashda xato: {e}")

@@ -117,7 +117,7 @@ class AIAssistant:
         import time
         import re
         def run_gemini():
-            retries = max(6, len(self.api_keys) * 3) # Ko'proq urinish
+            retries = 20 # Maksimal kutish (20 * 15s = 5 daqiqa). Limit butunlay yopiladi.
             
             for attempt in range(retries):
                 try:

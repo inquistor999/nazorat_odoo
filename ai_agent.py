@@ -108,7 +108,7 @@ class AIAssistant:
                 best_match = stored_a
         return best_match
         
-    async def generate_response(self, prompt: str, user_id: int, image_path: str = None):
+    async def generate_response(self, prompt: str, user_id: int, image_path: str = None, voice_path: str = None):
         if not self.model:
             return "⚠️ GEMINI_API_KEY topilmadi! Iltimos .env ga kalitni kiriting."
             
@@ -165,7 +165,7 @@ class AIAssistant:
 
     async def get_response(self, text: str, user_id: int, image_path: str = None, voice_path: str = None) -> str:
         # 1. Xotirani tekshiramiz
-        if not image_path:
+        if not image_path and not voice_path:
             mem_ans = self.find_in_memory(text)
             if mem_ans:
                 return mem_ans
@@ -175,21 +175,18 @@ class AIAssistant:
         text_lower = text.lower()
         if 'odoo' in text_lower or 'ishchi' in text_lower or 'sotuv' in text_lower or 'statistika' in text_lower:
             odoo_data = get_odoo_stats()
-            context += f"Odoo bazasidan hozir olingan ma'lumot:\n{odoo_data}\n"
+            context += f"Odoo bazasidan hozir olingan ma'lumot:\\n{odoo_data}\\n"
             
-        # 3. Internet qidiramiz (Hozircha o'chirilgan, chunki DDGS qotib qolyapti)
-        # if not context and text:
-        #     web_data = search_internet(text)
-        #     if web_data:
-        #         context += f"Internetdan qidirilgan ma'lumot:\n{web_data}\n"
-                
         # 4. LLM ga jo'natamiz
-        if context:
-            prompt = f"Foydalanuvchining savoli: {text}\nSenga yordam sifatida quyidagi ma'lumot topildi:\n{context}\nFaqat shu ma'lumot asosida yoki o'z biliming bilan javob tuz."
+        if voice_path:
+            prompt = text if text else "Foydalanuvchi ovozli xabar yubordi. Iltimos eshitib to'liq tushuning va qilinishi kerak bo'lgan vazifani (masalan bron) darhol bajaring."
         else:
-            prompt = text
+            prompt = text if text else "Ushbu rasm yoki faylga izoh bering yoki unga asoslanib aytilgan topshiriqni bajaring:"
             
-        ans = await self.generate_response(prompt, user_id, image_path)
+        if context:
+            prompt = f"{context}\\n\\nFoydalanuvchi so'rovi:\\n{prompt}"
+            
+        ans = await self.generate_response(prompt, user_id, image_path, voice_path)
         
         # 5. Xotiraga saqlash
         if "Xatosi" not in ans and "GEMINI_API_KEY" not in ans and not image_path:

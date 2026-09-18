@@ -123,7 +123,15 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.chat.send_action(action='typing')
         
         image_path = None
-        if update.message.photo:
+        voice_path = None
+        
+        if update.message.voice:
+            voice_file = update.message.voice
+            file = await context.bot.get_file(voice_file.file_id)
+            voice_path = f"temp_voice_{update.effective_user.id}.ogg"
+            await file.download_to_drive(voice_path)
+            user_msg_text = "🎤 Ovozli xabar yubordi."
+        elif update.message.photo:
             photo = update.message.photo[-1]
             file = await context.bot.get_file(photo.file_id)
             image_path = f"temp_image_{update.effective_user.id}.jpg"
@@ -134,10 +142,12 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
             image_path = f"temp_image_{update.effective_user.id}.jpg"
             await file.download_to_drive(image_path)
             
-        response = await ai_assistant.get_response(text, update.effective_user.id, image_path)
+        response = await ai_assistant.get_response(text, update.effective_user.id, image_path, voice_path)
         
         if image_path and os.path.exists(image_path):
             os.remove(image_path)
+        if voice_path and os.path.exists(voice_path):
+            os.remove(voice_path)
             
         await update.message.reply_text(response)
         
@@ -145,7 +155,8 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
         if config.LOG_GROUP_ID:
             try:
                 log_text = f"👤 Foydalanuvchi: {user_name}\n💬 Xabar: {user_msg_text}\n\n🤖 Bot javobi:\n{response}"
-                await context.bot.send_message(chat_id=config.LOG_GROUP_ID, text=log_text)
+                # chat_id integer bo'lishi kerak, shuning uchun int ga o'tkazamiz
+                await context.bot.send_message(chat_id=int(config.LOG_GROUP_ID), text=log_text)
             except Exception as e:
                 logging.error(f"Guruhga javob logini yuborishda xato: {e}")
                 
@@ -789,7 +800,7 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
-            MessageHandler((filters.TEXT | filters.PHOTO | filters.Document.IMAGE) & ~filters.COMMAND, handle_ai_or_atchot),
+            MessageHandler((filters.TEXT | filters.PHOTO | filters.VOICE | filters.Document.IMAGE) & ~filters.COMMAND, handle_ai_or_atchot),
             CallbackQueryHandler(menu_callback, pattern='^(menu_|orikzor_by_)'),
             CallbackQueryHandler(handle_company_selection, pattern='^comp_'),
             CallbackQueryHandler(handle_orikzor_month_callback, pattern='^omonth_'),

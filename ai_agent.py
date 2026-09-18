@@ -117,7 +117,7 @@ class AIAssistant:
         import time
         import re
         def run_gemini():
-            retries = max(5, len(self.api_keys) * 2)
+            retries = max(6, len(self.api_keys) * 3) # Ko'proq urinish
             
             for attempt in range(retries):
                 try:
@@ -133,36 +133,37 @@ class AIAssistant:
                         except Exception as e:
                             logging.error(f"Rasm ochishda xato: {e}")
                             return f"Rasm tahlil qilishda xato: {e}"
+                            
+                    if voice_path:
+                        try:
+                            audio_file = genai.upload_file(path=voice_path)
+                            response = chat.send_message([prompt, audio_file])
+                            return response.text
+                        except Exception as e:
+                            logging.error(f"Ovozli fayl yuklashda xato: {e}")
+                            return f"Ovozni tushunishda xato: {e}"
                     
                     response = chat.send_message([prompt])
                     return response.text
                 except Exception as e:
                     error_msg = str(e)
                     if "429" in error_msg:
-                        # 429 Quota Exceeded xatosi
+                        # Limit to'lsa, har safar 15 sekund kutamiz (RPM limit 15 ta bo'lgani uchun)
+                        # Bu bot "Limit tugadi" demasligi uchun yordam beradi.
+                        time.sleep(15) 
+                        
                         if len(self.api_keys) > 1:
-                            # Agar bir nechta kalit bo'lsa, keyingisiga o'tamiz
                             self.current_key_idx = (self.current_key_idx + 1) % len(self.api_keys)
                             self._setup_model()
-                            # Yangi modelda chatni qayta ochamiz
                             self.user_chats[user_id] = self.model.start_chat(enable_automatic_function_calling=True)
-                            chat = self.user_chats[user_id]
-                            time.sleep(1) # Ozgina kutiladi
-                            continue
-                        else:
-                            # Agar bitta kalit bo'lsa, kutamiz
-                            if attempt < retries - 1:
-                                match = re.search(r"retry in (\d+(?:\.\d+)?)s", error_msg)
-                                wait_time = float(match.group(1)) + 1.0 if match else 10.0
-                                time.sleep(min(wait_time, 20.0)) # Maksimum 20 sek kutamiz
-                                continue
-                            else:
-                                return f"Limit tugadi. Iltimos .env faylga yangi API kalit qo'shing: GEMINI_API_KEY_2=... xatosi: {error_msg}"
+                            
+                        continue
+                        
                     return f"Gemini Xatosi: {e}"
-            return "Limit tugadi. Barcha kalitlarda (API keys) 429 xatosi yuz berdi yoki retries tugadi. Iltimos, keyinroq urinib ko'ring yoki yangi kalit qo'shing."
+            return "Kechirasiz, men hozir ko'p funksiyalarni ishlatganim uchun API limit (kvota) tugadi. Iltimos 1 daqiqa kutib qayta urinib ko'ring."
         return await asyncio.to_thread(run_gemini)
 
-    async def get_response(self, text: str, user_id: int, image_path: str = None) -> str:
+    async def get_response(self, text: str, user_id: int, image_path: str = None, voice_path: str = None) -> str:
         # 1. Xotirani tekshiramiz
         if not image_path:
             mem_ans = self.find_in_memory(text)

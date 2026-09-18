@@ -128,25 +128,27 @@ class AIAssistant:
                     if image_path:
                         try:
                             img = PIL.Image.open(image_path)
-                            response = self.model.generate_content([prompt, img])
-                            return response.text
                         except Exception as e:
                             logging.error(f"Rasm ochishda xato: {e}")
                             return f"Rasm tahlil qilishda xato: {e}"
+                        
+                        response = self.model.generate_content([prompt, img])
+                        return response.text
                             
                     if voice_path:
                         try:
                             with open(voice_path, "rb") as f_voice:
                                 audio_bytes = f_voice.read()
-                            audio_part = {
-                                "mime_type": "audio/ogg",
-                                "data": audio_bytes
-                            }
-                            response = chat.send_message([prompt, audio_part])
-                            return response.text
                         except Exception as e:
-                            logging.error(f"Ovozli fayl yuklashda xato: {e}")
+                            logging.error(f"Ovozli fayl o'qishda xato: {e}")
                             return f"Ovozni tushunishda xato: {e}"
+                            
+                        audio_part = {
+                            "mime_type": "audio/ogg",
+                            "data": audio_bytes
+                        }
+                        response = chat.send_message([prompt, audio_part])
+                        return response.text
                     
                     response = chat.send_message([prompt])
                     return response.text

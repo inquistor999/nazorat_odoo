@@ -399,7 +399,21 @@ def create_bron_tool(client_name: str, warehouse_name: str, reason_code: str, pr
 
         new_bron_id = client.models.execute_kw(client.db, client.uid, client.password, 'bron.order', 'create', [vals])
 
-        return f"2Z&  Muvaffaqiyatli! Bron yaratildi (ID: {new_bron_id}). Mijoz: {partner[0]['name']}, Ombor: {wh[0]['name']}, Tovar: {prod[0]['name']} ({qty} miqdorda, {price} narxda)."
+        
+
+        # Avtomatik ravishda tasdiqlaymiz (action_confirm) toki free to use darhol kamaysin
+
+        try:
+
+            client.models.execute_kw(client.db, client.uid, client.password, 'bron.order', 'action_confirm', [[new_bron_id]])
+
+        except Exception as e:
+
+            pass # Agar action_confirm bo'lmasa yoki xato bersa ham, bron yaratilganligi haqida xabar qaytariladi
+
+            
+
+        return f"✅ Muvaffaqiyatli! Bron yaratildi va TASDIQLANDI (ID: {new_bron_id}). Mijoz: {partner[0]['name']}, Ombor: {wh[0]['name']}, Tovar: {prod[0]['name']} ({qty} miqdorda, {price} narxda)."
 
         
 

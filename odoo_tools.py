@@ -511,3 +511,105 @@ odoo_tools_list = [
     get_pending_bron_cancel_requests_tool,
     action_bron_cancel_request_tool
 ]
+
+def update_odoo_record(model_name: str, record_id: int, fields_to_update: dict) -> str:
+    """
+    Odoo bazasidagi istalgan jadvaldagi (model) ma'lumotni qisman (chistichno) tahrirlaydi.
+    Masalan, bron (sale.order.line) qilingan tovar miqdorini o'zgartirish (masalan 100 kg ga tushirish) uchun 'product_uom_qty' maydoni yangilanadi.
+    Args:
+        model_name: Odoo modeli (masalan 'sale.order.line').
+        record_id: Tahrirlanadigan ma'lumotning ID raqami.
+        fields_to_update: Yangilanadigan maydonlar lyg'ati (dictionary), masalan: {'product_uom_qty': 400.0}
+    Returns:
+        Amal natijasi haqida ma'lumot.
+    """
+    try:
+        from odoo_client import OdooClient
+        client = OdooClient()
+        success = client.models.execute_kw(client.db, client.uid, client.password,
+            model_name, 'write', [[record_id], fields_to_update])
+        if success:
+            return f"✅ Muvaffaqiyatli! {model_name} (ID: {record_id}) dagi ma'lumotlar o'zgartirildi: {fields_to_update}"
+        else:
+            return f"❌ Xatolik yuz berdi. Tahrirlash amalga oshmadi."
+    except Exception as e:
+        return f"Xato: {e}"
+
+def delete_odoo_record(model_name: str, record_ids: list) -> str:
+    """
+    Odoo bazasidagi istalgan ma'lumotni TO'LIQ o'chirib yuboradi (unlink).
+    Masalan, bekor qilingan nakladnoyning hali jo'natilmagan dostavkasini (stock.picking) butunlay o'chirish uchun.
+    Args:
+        model_name: Odoo modeli (masalan 'stock.picking' yoki 'sale.order').
+        record_ids: O'chiriladigan ID lar ro'yxati (masalan [1234]).
+    Returns:
+        O'chirilganligi haqida xabar.
+    """
+    try:
+        from odoo_client import OdooClient
+        client = OdooClient()
+        success = client.models.execute_kw(client.db, client.uid, client.password,
+            model_name, 'unlink', [record_ids])
+        if success:
+            return f"🚮 Muvaffaqiyatli o'chirildi! {model_name} jadvallari: {record_ids} to'liq olib tashlandi."
+        else:
+            return f"❌ O'chirishda xatolik yuz berdi. Ma'lumot boshqa hujjatlarga bog'langan bo'lishi mumkin."
+    except Exception as e:
+        return f"Xato: {e}"
+
+def execute_odoo_button(model_name: str, method_name: str, record_ids: list) -> str:
+    """
+    Odoo interfeysidagi istalgan tugmani (Method) bosish imkonini beradi.
+    Masalan, Nakladnoyni bekor qilish uchun 'sale.order' da 'action_cancel' methodi ishlatiladi. Bronni tasdiqlash uchun 'action_confirm' ishlatiladi.
+    Args:
+        model_name: Odoo modeli (masalan 'sale.order').
+        method_name: Bosiladigan tugmaning backend kodi (masalan 'action_cancel', 'action_confirm').
+        record_ids: Qaysi hujjatlarda (ID) shu tugma bosilishi kerak (masalan [54321]).
+    Returns:
+        Tugma muvaffaqiyatli bosilganligi natijasi.
+    """
+    try:
+        from odoo_client import OdooClient
+        client = OdooClient()
+        client.models.execute_kw(client.db, client.uid, client.password,
+            model_name, method_name, [record_ids])
+        return f"🔘 '{method_name}' tugmasi {model_name} (ID: {record_ids}) uchun muvaffaqiyatli bosildi!"
+    except Exception as e:
+        return f"Tugma bosishda xatolik: {e}"
+
+def execute_odoo_shell_command(python_code: str) -> str:
+    """
+    Odoo serverida backend (shell) orqali to'g'ridan to'g'ri Python kod ishga tushirish imkonini beradi.
+    Foydalanuvchi qatiy ravishda shell orqali bajarishni va o'z tasdig'ini (Ha) berganidan so'nggina ishlatiladi.
+    Odoo environment `env` o'zgaruvchisi orqali taqdim etiladi.
+    Args:
+        python_code: Ishga tushiriladigan Odoo Python script kodi. Bu env.cr.execute() yoki env['model'].search() bo'lishi mumkin.
+    Returns:
+        Scriptning bajarilish natijasi yoki print qilingan ma'lumotlar.
+    """
+    try:
+        from odoo_client import OdooClient
+        import xmlrpc.client
+        client = OdooClient()
+        
+        # Odoo API orqali raw python ishga tushirib bo'lmaydi (xavfsizlik sababli).
+        # Lekin biz buni qaysidir server action yoki base execute_kw vositasida 'ir.actions.server' orqali vaqtincha yaratib ishga tushirishimiz mumkin.
+        # Bu juda ilg'or funksiya.
+        
+        action_vals = {
+            'name': 'AI Shell Execution',
+            'model_id': client.models.execute_kw(client.db, client.uid, client.password, 'ir.model', 'search', [[('model', '=', 'res.partner')]])[0],
+            'state': 'code',
+            'code': python_code
+        }
+        
+        action_id = client.models.execute_kw(client.db, client.uid, client.password, 'ir.actions.server', 'create', [action_vals])
+        
+        result = client.models.execute_kw(client.db, client.uid, client.password, 'ir.actions.server', 'run', [[action_id]])
+        
+        # Tozalash
+        client.models.execute_kw(client.db, client.uid, client.password, 'ir.actions.server', 'unlink', [[action_id]])
+        
+        return f"💻 Shell Script bajarildi. Natija: {result}"
+    except Exception as e:
+        return f"Shell Script Xatosi: {e}"

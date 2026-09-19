@@ -117,6 +117,16 @@ class AIAssistant:
         import time
         import re
         def run_gemini():
+            # Har bir yangi so'rovda doim 1-kalit (tekin) ga qaytamiz!
+            if self.current_key_idx != 0:
+                self.current_key_idx = 0
+                self._setup_model()
+                # Agar foydalanuvchini chat tarixi bo'lsa, uni tekin kalitga olib o'tamiz
+                if user_id in self.user_chats:
+                    old_chat = self.user_chats[user_id]
+                    old_history = old_chat.history if hasattr(old_chat, 'history') else []
+                    self.user_chats[user_id] = self.model.start_chat(history=old_history, enable_automatic_function_calling=True)
+
             retries = 20 # Maksimal kutish (20 * 15s = 5 daqiqa). Limit butunlay yopiladi.
             
             for attempt in range(retries):
@@ -159,7 +169,9 @@ class AIAssistant:
                             # Agar bir nechta kalit bo'lsa, DARHOL keyingi kalitga o'tamiz (kutmasdan)
                             self.current_key_idx = (self.current_key_idx + 1) % len(self.api_keys)
                             self._setup_model()
-                            self.user_chats[user_id] = self.model.start_chat(enable_automatic_function_calling=True)
+                            old_history = chat.history if hasattr(chat, 'history') else []
+                            self.user_chats[user_id] = self.model.start_chat(history=old_history, enable_automatic_function_calling=True)
+                            chat = self.user_chats[user_id]
                             
                             # Agar aylanib yana birinchi kalitga kelsak (hamma kalitlar limitga tushsa), shundagina kutamiz
                             if self.current_key_idx == 0:

@@ -7,6 +7,49 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from telegram.request import HTTPXRequest
 import config
 from odoo_client import OdooClient
+import time
+import asyncio
+
+user_message_buffers = {}
+user_timers = {}
+
+async def process_user_buffer(user_id, chat_id, context, user_name):
+    buffer = user_message_buffers.pop(user_id, None)
+    if not buffer:
+        return
+        
+    texts = buffer.get('texts', [])
+    image_paths = buffer.get('image_paths', [])
+    voice_paths = buffer.get('voice_paths', [])
+    
+    combined_text = "
+".join(texts)
+    
+    try:
+        await context.bot.send_chat_action(chat_id=chat_id, action='typing')
+        response = await ai_assistant.get_response(combined_text, user_id, image_paths, voice_paths)
+        
+        # Cleanup
+        for img in image_paths:
+            if os.path.exists(img): os.remove(img)
+        for voice in voice_paths:
+            if os.path.exists(voice): os.remove(voice)
+            
+        await context.bot.send_message(chat_id=chat_id, text=response)
+        
+        # Log logic
+        if config.LOG_GROUP_ID:
+            log_text = f"👤 Foydalanuvchi: {user_name}
+💬 Xabarlar soni: {len(texts) + len(image_paths) + len(voice_paths)}
+
+🤖 Bot javobi:
+{response}"
+            await context.bot.send_message(chat_id=int(config.LOG_GROUP_ID), text=log_text)
+            
+    except Exception as e:
+        import logging
+        logging.error(f"Process buffer error: {e}")
+
 from analysis import calculate_reorder_qty, create_sales_history_chart, extract_package_info
 from excel_exporter import generate_monthly_sales_excel, generate_reorder_excel
 from ai_agent import ai_assistant
@@ -120,45 +163,49 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
     if text.lower() == 'atchot':
         return await show_company_selection(update, context)
     else:
-        await update.message.chat.send_action(action='typing')
+        # Xabarlarni yig'ish mantiqi (Aggregation)
+        if user_id not in user_message_buffers:
+            user_message_buffers[user_id] = {'texts': [], 'image_paths': [], 'voice_paths': []}
+            
+        buffer = user_message_buffers[user_id]
         
-        image_path = None
-        voice_path = None
-        
+        if text:
+            buffer['texts'].append(text)
+            
+        # Fayllarni yuklab olish (noyob ismlar bilan)
+        timestamp = int(time.time() * 1000)
         if update.message.voice:
             voice_file = update.message.voice
             file = await context.bot.get_file(voice_file.file_id)
-            voice_path = f"temp_voice_{update.effective_user.id}.ogg"
+            voice_path = f"temp_voice_{user_id}_{timestamp}.ogg"
             await file.download_to_drive(voice_path)
-            user_msg_text = "🎤 Ovozli xabar yubordi."
+            buffer['voice_paths'].append(voice_path)
         elif update.message.photo:
             photo = update.message.photo[-1]
             file = await context.bot.get_file(photo.file_id)
-            image_path = f"temp_image_{update.effective_user.id}.jpg"
+            image_path = f"temp_image_{user_id}_{timestamp}.jpg"
             await file.download_to_drive(image_path)
+            buffer['image_paths'].append(image_path)
         elif update.message.document and update.message.document.mime_type and update.message.document.mime_type.startswith('image/'):
             doc = update.message.document
             file = await context.bot.get_file(doc.file_id)
-            image_path = f"temp_image_{update.effective_user.id}.jpg"
+            image_path = f"temp_image_{user_id}_{timestamp}.jpg"
             await file.download_to_drive(image_path)
+            buffer['image_paths'].append(image_path)
             
-        response = await ai_assistant.get_response(text, update.effective_user.id, image_path, voice_path)
-        
-        if image_path and os.path.exists(image_path):
-            os.remove(image_path)
-        if voice_path and os.path.exists(voice_path):
-            os.remove(voice_path)
+        # Eski timerni bekor qilish
+        if user_id in user_timers:
+            user_timers[user_id].cancel()
             
-        await update.message.reply_text(response)
-        
-        # Botning va foydalanuvchining xabarini bitta qilib guruhga yuborish
-        if config.LOG_GROUP_ID:
-            try:
-                log_text = f"👤 Foydalanuvchi: {user_name}\n💬 Xabar: {user_msg_text}\n\n🤖 Bot javobi:\n{response}"
-                # chat_id integer bo'lishi kerak, shuning uchun int ga o'tkazamiz
-                await context.bot.send_message(chat_id=int(config.LOG_GROUP_ID), text=log_text)
-            except Exception as e:
-                logging.error(f"Guruhga javob logini yuborishda xato: {e}")
+        # Yangi 5 soniyalik timer boshlash
+        loop = asyncio.get_event_loop()
+        task = loop.create_task(
+            asyncio.sleep(4)
+        )
+        task.add_done_callback(
+            lambda t: asyncio.create_task(process_user_buffer(user_id, update.message.chat_id, context, user_name)) if not t.cancelled() else None
+        )
+        user_timers[user_id] = task
                 
         return ConversationHandler.END
 

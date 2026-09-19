@@ -110,7 +110,7 @@ class AIAssistant:
                 best_match = stored_a
         return best_match
         
-    async def generate_response(self, prompt: str, user_id: int, image_path: str = None, voice_path: str = None):
+    async def generate_response(self, prompt: str, user_id: int, image_paths: list = None, voice_paths: list = None):
         if not self.model:
             return "⚠️ GEMINI_API_KEY topilmadi! Iltimos .env ga kalitni kiriting."
             

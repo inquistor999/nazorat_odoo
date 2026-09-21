@@ -138,19 +138,21 @@ class AIAssistant:
                         self.user_chats[user_id] = self.model.start_chat(enable_automatic_function_calling=True)
                     chat = self.user_chats[user_id]
                     
-                    if image_path:
-                        try:
-                            img = PIL.Image.open(image_path)
-                        except Exception as e:
-                            logging.error(f"Rasm ochishda xato: {e}")
-                            return f"Rasm tahlil qilishda xato: {e}"
+                    if image_paths:
+                        content_parts = [prompt]
+                        for ip in image_paths:
+                            try:
+                                img = PIL.Image.open(ip)
+                                content_parts.append(img)
+                            except Exception as e:
+                                logging.error(f"Rasm ochishda xato: {e}")
                         
-                        response = self.model.generate_content([prompt, img])
+                        response = self.model.generate_content(content_parts)
                         return response.text
                             
-                    if voice_path:
+                    if voice_paths:
                         try:
-                            with open(voice_path, "rb") as f_voice:
+                            with open(voice_paths[0], "rb") as f_voice:
                                 audio_bytes = f_voice.read()
                         except Exception as e:
                             logging.error(f"Ovozli fayl o'qishda xato: {e}")
@@ -189,9 +191,9 @@ class AIAssistant:
             return "Kechirasiz, men hozir ko'p funksiyalarni ishlatganim uchun API limit (kvota) tugadi. Iltimos 1 daqiqa kutib qayta urinib ko'ring."
         return await asyncio.to_thread(run_gemini)
 
-    async def get_response(self, text: str, user_id: int, image_path: str = None, voice_path: str = None) -> str:
+    async def get_response(self, text: str, user_id: int, image_paths: list = None, voice_paths: list = None) -> str:
         # 1. Xotirani tekshiramiz
-        if not image_path and not voice_path:
+        if not image_paths and not voice_paths:
             mem_ans = self.find_in_memory(text)
             if mem_ans:
                 return mem_ans
@@ -204,7 +206,7 @@ class AIAssistant:
             context += f"Odoo bazasidan hozir olingan ma'lumot:\\n{odoo_data}\\n"
             
         # 4. LLM ga jo'natamiz
-        if voice_path:
+        if voice_paths:
             prompt = text if text else "Foydalanuvchi ovozli xabar yubordi. Iltimos eshitib to'liq tushuning va qilinishi kerak bo'lgan vazifani (masalan bron) darhol bajaring."
         else:
             prompt = text if text else "Ushbu rasm yoki faylga izoh bering yoki unga asoslanib aytilgan topshiriqni bajaring:"
@@ -212,10 +214,10 @@ class AIAssistant:
         if context:
             prompt = f"{context}\\n\\nFoydalanuvchi so'rovi:\\n{prompt}"
             
-        ans = await self.generate_response(prompt, user_id, image_path, voice_path)
+        ans = await self.generate_response(prompt, user_id, image_paths, voice_paths)
         
         # 5. Xotiraga saqlash
-        if "Xatosi" not in ans and "GEMINI_API_KEY" not in ans and not image_path:
+        if "Xatosi" not in ans and "GEMINI_API_KEY" not in ans and not image_paths:
             self.memory[text] = ans
             self.save_memory()
             

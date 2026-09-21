@@ -612,10 +612,25 @@ class OdooClient:
             state = orders[0]['state']
             if state == 'cancel':
                 return f"{order_name} allaqachon bekor qilingan."
+                
+            # Check related pickings
+            picking_ids = orders[0].get('picking_ids', [])
+            if picking_ids:
+                pickings = self.models.execute_kw(self.db, self.uid, self.password,
+                    'stock.picking', 'read', [picking_ids], {'fields': ['id', 'state', 'name']})
+                for pick in pickings:
+                    if pick['state'] == 'done':
+                        return f"❌ {order_name} ni bekor qilib bo'lmaydi! Unga ulangan dostavka ({pick['name']}) allaqachon bajarilgan (done)."
+                
+                # Cancel pickings
+                for pick in pickings:
+                    if pick['state'] not in ('cancel', 'done'):
+                        self.models.execute_kw(self.db, self.uid, self.password, 'stock.picking', 'action_cancel', [[pick['id']]])
             
+            # Finally cancel sale order
             self.models.execute_kw(self.db, self.uid, self.password,
                 'sale.order', 'action_cancel', [[order_id]])
-            return f"✅ {order_name} nakladnoy muvaffaqiyatli bekor qilindi (cancel)."
+            return f"✅ {order_name} nakladnoy muvaffaqiyatli bekor qilindi."
         except Exception as e:
             return f"Xato: {e}"
 

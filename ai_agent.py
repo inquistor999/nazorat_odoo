@@ -147,7 +147,7 @@ class AIAssistant:
                             except Exception as e:
                                 logging.error(f"Rasm ochishda xato: {e}")
                         
-                        response = self.model.generate_content(content_parts)
+                        response = chat.send_message(content_parts)
                         return response.text
                             
                     if voice_paths:

@@ -169,7 +169,7 @@ class AIAssistant:
                     return response.text
                 except Exception as e:
                     error_msg = str(e)
-                    if "429" in error_msg:
+                    if "429" in error_msg or "401" in error_msg or "403" in error_msg or "ACCOUNT_STATE_INVALID" in error_msg:
                         if len(self.api_keys) > 1:
                             # Agar bir nechta kalit bo'lsa, DARHOL keyingi kalitga o'tamiz (kutmasdan)
                             self.current_key_idx = (self.current_key_idx + 1) % len(self.api_keys)
@@ -179,11 +179,14 @@ class AIAssistant:
                             chat = self.user_chats[user_id]
                             
                             # Agar aylanib yana birinchi kalitga kelsak (hamma kalitlar limitga tushsa), shundagina kutamiz
-                            if self.current_key_idx == 0:
+                            if self.current_key_idx == 0 and "429" in error_msg:
                                 time.sleep(15)
                         else:
                             # Agar faqat 1 ta kalit bo'lsa, har doim kutishga majburmiz
-                            time.sleep(15)
+                            if "429" in error_msg:
+                                time.sleep(15)
+                            else:
+                                return f"Gemini Xatosi (Kalit ishlamayapti): {e}"
                             
                         continue
                         

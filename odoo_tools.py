@@ -512,10 +512,82 @@ def action_bron_cancel_request_tool(request_id: int, action: str) -> str:
             return f"So'rov holati qo'lda '{state}' ga o'zgartirildi."
 
         except Exception as e2:
-
             return f"Tasdiqlashda xato: {e}. Qo'shimcha xato: {e2}"
 
+def delete_bron_tool(bron_name: str) -> str:
+    """
+    Bron hujjatini to'liq bekor qiladi va o'chiradi (masalan, BRON/2026/0495).
+    Foydalanuvchi qaysidir bronni o'chirib yuborishni so'rasa shu ishlatiladi.
+    Args:
+        bron_name: Bron hujjatining nomi.
+    """
+    try:
+        from odoo_client import OdooClient
+        client = OdooClient()
+        bron = client.models.execute_kw(client.db, client.uid, client.password,
+            'bron.order', 'search_read', [[('name', 'ilike', bron_name)]], {'fields': ['id', 'state'], 'limit': 1})
+        if not bron:
+            return f"❌ {bron_name} raqamli bron topilmadi."
+        bron_id = bron[0]['id']
+        # 1. Cancel request or admin delete
+        try:
+            client.models.execute_kw(client.db, client.uid, client.password, 'bron.order', 'action_admin_delete', [[bron_id]])
+            return f"✅ {bron_name} bron hujjati muvaffaqiyatli BEKOR QILINDI (O'chirildi)."
+        except Exception as e:
+            # Fallback to write state cancelled if admin delete is not working
+            client.models.execute_kw(client.db, client.uid, client.password, 'bron.order', 'write', [[bron_id], {'state': 'cancelled'}])
+            return f"✅ {bron_name} bron hujjati 'cancelled' holatiga o'tkazildi. (Admin xatosi: {e})"
+    except Exception as e:
+        return f"Xatolik: {e}"
 
+def update_bron_qty_tool(bron_name: str, product_name: str, new_qty: float) -> str:
+    """
+    Kiritilgan bron (masalan BRON/2026/0495) ichidagi aniq bir tovarning (product_name) miqdorini (kg) qisman o'zgartiradi (chistichno).
+    Foydalanuvchi: 'BRON/2026/0495 dan 10 kg lik Kraxmal ni 5 kg qilib qo'y' desa ishlatiladi. Yoki 'olib tashla' desa new_qty=0 qilib ishlatiladi.
+    Agar yangi miqdor 0 (nol) qilib berilsa, o'sha tovar brondan butunlay olib tashlanadi.
+    Args:
+        bron_name: Bron nomi (masalan BRON/2026/0495).
+        product_name: O'zgartirilishi kerak bo'lgan tovar nomi (masalan 'Limon mono' yoki 'Kraxmal').
+        new_qty: Yangi qolishi kerak bo'lgan MAQSAD miqdor (masalan, 10 kg dan 5 kg qolishi kerak bo'lsa, 5 yoziladi). Ayirish qilmang, aynan qolishi kerak bo'lgan sonni bering.
+    """
+    try:
+        from odoo_client import OdooClient
+        client = OdooClient()
+        bron = client.models.execute_kw(client.db, client.uid, client.password,
+            'bron.order', 'search_read', [[('name', 'ilike', bron_name)]], {'fields': ['id', 'order_line_ids', 'state'], 'limit': 1})
+        if not bron:
+            return f"❌ {bron_name} raqamli bron topilmadi."
+            
+        bron_id = bron[0]['id']
+        line_ids = bron[0]['order_line_ids']
+        
+        if not line_ids:
+            return f"❌ {bron_name} bron hujjatida tovarlar mavjud emas."
+            
+        # Get lines
+        lines = client.models.execute_kw(client.db, client.uid, client.password,
+            'bron.order.line', 'read', [line_ids], {'fields': ['id', 'product_id', 'qty']})
+            
+        target_line = None
+        for line in lines:
+            if product_name.lower() in line['product_id'][1].lower():
+                target_line = line
+                break
+                
+        if not target_line:
+            return f"❌ {bron_name} hujjatida '{product_name}' nomli tovar topilmadi."
+            
+        if float(new_qty) <= 0:
+            # Delete line completely
+            client.models.execute_kw(client.db, client.uid, client.password, 'bron.order.line', 'unlink', [[target_line['id']]])
+            return f"✅ '{target_line['product_id'][1]}' tovari {bron_name} brondan butunlay olib tashlandi."
+        else:
+            # Update qty
+            client.models.execute_kw(client.db, client.uid, client.password, 'bron.order.line', 'write', [[target_line['id']], {'qty': float(new_qty)}])
+            return f"✅ {bron_name} hujjatidagi '{target_line['product_id'][1]}' tovari miqdori {new_qty} ga muvaffaqiyatli o'zgartirildi."
+            
+    except Exception as e:
+        return f"Xatolik: {e}"
 
 odoo_tools_list = [
     get_client_debt, 
@@ -533,6 +605,8 @@ odoo_tools_list = [
     get_pending_bron_cancel_requests_tool,
     action_bron_cancel_request_tool,
     generate_receipt_image_tool,
+    delete_bron_tool,
+    update_bron_qty_tool,
 ]
 
 def update_odoo_record(model_name: str, record_id: int, fields_to_update: dict) -> str:

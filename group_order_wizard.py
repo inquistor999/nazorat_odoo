@@ -38,14 +38,34 @@ async def process_next_product(bot, chat_id, context):
         
     item = order['items'][idx]
     
-    # Mock search
-    keyboard = [
-        [InlineKeyboardButton("Variant 1", callback_data="prod_var_1")],
-        [InlineKeyboardButton("Variant 2", callback_data="prod_var_2")],
-        [InlineKeyboardButton("Variant 3", callback_data="prod_var_3")],
-        [InlineKeyboardButton("Variant 4", callback_data="prod_var_4")],
-        [InlineKeyboardButton("Bu emas", callback_data="prod_next_page")]
-    ]
+    # Haqiqiy Odoo dagi tovarlarni izlash
+    from odoo_tools import universal_odoo_search
+    import json
+    
+    # Qidiruv natijasini olish (faqat Odoo'dagi mavjud tovarlar)
+    search_result_str = universal_odoo_search(item['raw_name'])
+    
+    keyboard = []
+    
+    try:
+        # Natija ko'pincha JSON ro'yxat ko'rinishida qaytadi
+        products = json.loads(search_result_str)
+        if isinstance(products, list):
+            # Maksimal 4 ta variant chiqarish
+            for p in products[:4]:
+                name = p.get('name', 'Nomsiz')
+                # Tugma textiga sig'ishi uchun uzunligini kesish
+                display_name = name[:40] + '...' if len(name) > 40 else name
+                keyboard.append([InlineKeyboardButton(display_name, callback_data=f"prod_{name[:20]}")])
+        else:
+            # Agar JSON emas, balki string qaytsa (xatolik)
+            keyboard.append([InlineKeyboardButton("Variant topilmadi", callback_data="prod_notfound")])
+    except Exception:
+        # Xatolik yuz bersa (JSON parse bo'lmasa)
+        keyboard.append([InlineKeyboardButton("Variant topilmadi (Xato)", callback_data="prod_error")])
+        
+    keyboard.append([InlineKeyboardButton("Bu emas (boshqa)", callback_data="prod_next_page")])
+    
     reply_markup = InlineKeyboardMarkup(keyboard)
     text = f"📦 Guruhdan zakaz:\n'{item['raw_name']}' ({item['qty']} kg)\nOdoo dan to'g'ri nomni tanlang:"
     await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
@@ -59,7 +79,19 @@ async def handle_product_variant(update: Update, context: ContextTypes.DEFAULT_T
         
     order = context.user_data['wizard_order']
     idx = context.user_data['wizard_current_item_idx']
-    order['items'][idx]['matched_name'] = query.data
+    
+    # query.data ichida 'prod_NOM' qismi bor. Lekin biz asl tugmadagi textni (yoki p['name'] ni) yozishimiz kerak.
+    # Eng yaxshisi query.message dagi tugmalardan topish yoki shunchaki query.data dan foydalanish (faqat u 20 ta harfgacha kesilgan)
+    # Ammo hozircha oddiy saqlaymiz:
+    
+    # Asl nomni tugmalar orasidan qidiramiz
+    selected_name = "Nomsiz"
+    for row in query.message.reply_markup.inline_keyboard:
+        for btn in row:
+            if btn.callback_data == query.data:
+                selected_name = btn.text
+                
+    order['items'][idx]['matched_name'] = selected_name
     context.user_data['wizard_current_item_idx'] += 1
     await process_next_product(context.bot, update.effective_chat.id, context)
 

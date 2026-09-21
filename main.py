@@ -255,6 +255,28 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
                 
         return ConversationHandler.END
 
+async def auto_confirm_brons_job(context: ContextTypes.DEFAULT_TYPE):
+    from odoo_client import OdooClient
+    import os
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    if not chat_id:
+        return
+        
+    try:
+        client = OdooClient()
+        # 'active' holatida qolib ketgan bronlarni qidiramiz
+        active_brons = client.models.execute_kw(client.db, client.uid, client.password, 'bron.order', 'search_read', [[('state', '=', 'active')]], {'fields': ['id', 'name']})
+        
+        for b in active_brons:
+            try:
+                client.models.execute_kw(client.db, client.uid, client.password, 'bron.order', 'action_confirm_reserve', [[b['id']]])
+                await context.bot.send_message(chat_id=chat_id, text=f"✅ {b['name']} avtomatik tarzda tasdiqlandi!")
+            except Exception as e:
+                # Odatda xato bo'lsa (masalan ostatka yetmasa) shunday bo'ladi
+                await context.bot.send_message(chat_id=chat_id, text=f"⚠️ {b['name']} bronni tasdiqlab bo'lmadi! Ostatkada yetarli emas bo'lishi mumkin.\n\nXato: {e}")
+    except Exception as e:
+        pass # Tarmoq xatolari yoki Odoo bilan bog'lanish muammolarini o'tkazib yuboramiz
+
 async def handle_cancel_to_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -914,6 +936,11 @@ def main():
         },
         fallbacks=[CommandHandler('cancel', cancel), CommandHandler('start', start)]
     )
+    
+    # Avtomatik bron tasdiqlash vazifasini qo'shamiz (har 60 soniyada tekshiradi, birinchi marta 10 soniyadan keyin boshlaydi)
+    if application.job_queue:
+        application.job_queue.run_repeating(auto_confirm_brons_job, interval=60, first=10)
+
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("id", cmd_id))
     

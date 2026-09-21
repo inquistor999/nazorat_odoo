@@ -415,16 +415,11 @@ def create_bron_tool(client_name: str, warehouse_name: str, reason_code: str, pr
 
         
 
-        # Avtomatik ravishda tasdiqlaymiz (action_confirm) toki free to use darhol kamaysin
-
+        # Avtomatik ravishda tasdiqlaymiz (action_confirm_reserve) toki free to use darhol kamaysin
         try:
-            client.models.execute_kw(client.db, client.uid, client.password, 'bron.order', 'action_confirm', [[new_bron_id]])
+            client.models.execute_kw(client.db, client.uid, client.password, 'bron.order', 'action_confirm_reserve', [[new_bron_id]])
         except Exception as e:
-            try:
-                # Odoo da ba'zida action_confirm o'rniga button_confirm ishlatiladi
-                client.models.execute_kw(client.db, client.uid, client.password, 'bron.order', 'button_confirm', [[new_bron_id]])
-            except Exception as e2:
-                return f"Bron yaratildi, lekin tasdiqlashda xato yuz berdi: {e} | {e2}"
+            return f"Bron yaratildi, lekin tasdiqlashda xato yuz berdi (Sklad yetarli emas bo'lishi mumkin): {e}"
 
         return f"✅ Muvaffaqiyatli! Bron yaratildi va TASDIQLANDI (ID: {new_bron_id}). Mijoz: {partner[0]['name']}, Ombor: {wh[0]['name']}, Tovar: {prod[0]['name']} ({qty} miqdorda, {price} narxda)."
 

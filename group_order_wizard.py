@@ -39,28 +39,28 @@ async def process_next_product(bot, chat_id, context):
     item = order['items'][idx]
     
     # Haqiqiy Odoo dagi tovarlarni izlash
-    from odoo_tools import universal_odoo_search
-    import json
-    
-    # Qidiruv natijasini olish (faqat Odoo'dagi mavjud tovarlar)
-    search_result_str = universal_odoo_search(item['raw_name'])
+    from odoo_client import OdooClient
     
     keyboard = []
     
     try:
-        # Natija ko'pincha JSON ro'yxat ko'rinishida qaytadi
-        products = json.loads(search_result_str)
-        if isinstance(products, list):
+        client = OdooClient()
+        products = client.models.execute_kw(client.db, client.uid, client.password, 
+            'product.product', 'search_read', 
+            [[('name', 'ilike', item['raw_name'])]], 
+            {'fields': ['id', 'name'], 'limit': 4})
+            
+        if products and isinstance(products, list):
             # Maksimal 4 ta variant chiqarish
-            for p in products[:4]:
+            for p in products:
                 name = p.get('name', 'Nomsiz')
                 # Tugma textiga sig'ishi uchun uzunligini kesish
                 display_name = name[:40] + '...' if len(name) > 40 else name
                 keyboard.append([InlineKeyboardButton(display_name, callback_data=f"prod_{name[:20]}")])
         else:
-            # Agar JSON emas, balki string qaytsa (xatolik)
+            # Agar topilmasa
             keyboard.append([InlineKeyboardButton("Variant topilmadi", callback_data="prod_notfound")])
-    except Exception:
+    except Exception as e:
         # Xatolik yuz bersa (JSON parse bo'lmasa)
         keyboard.append([InlineKeyboardButton("Variant topilmadi (Xato)", callback_data="prod_error")])
         

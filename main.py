@@ -22,8 +22,7 @@ async def process_user_buffer(user_id, chat_id, context, user_name):
     image_paths = buffer.get('image_paths', [])
     voice_paths = buffer.get('voice_paths', [])
     
-    combined_text = "
-".join(texts)
+    combined_text = "\\n".join(texts)
     
     try:
         await context.bot.send_chat_action(chat_id=chat_id, action='typing')
@@ -35,15 +34,23 @@ async def process_user_buffer(user_id, chat_id, context, user_name):
         for voice in voice_paths:
             if os.path.exists(voice): os.remove(voice)
             
-        await context.bot.send_message(chat_id=chat_id, text=response)
+        import re
+        image_match = re.search(r'\[IMAGE:(.+?)\]', response)
+        
+        if image_match:
+            filename = image_match.group(1)
+            response = response.replace(image_match.group(0), "").strip()
+            if os.path.exists(filename):
+                await context.bot.send_photo(chat_id=chat_id, photo=open(filename, 'rb'), caption=response)
+                os.remove(filename)  # Delete image after sending
+            else:
+                await context.bot.send_message(chat_id=chat_id, text=response)
+        else:
+            await context.bot.send_message(chat_id=chat_id, text=response)
         
         # Log logic
         if config.LOG_GROUP_ID:
-            log_text = f"👤 Foydalanuvchi: {user_name}
-💬 Xabarlar soni: {len(texts) + len(image_paths) + len(voice_paths)}
-
-🤖 Bot javobi:
-{response}"
+            log_text = f"👤 Foydalanuvchi: {user_name}\\n💬 Xabarlar soni: {len(texts) + len(image_paths) + len(voice_paths)}\\n\\n🤖 Bot javobi:\\n{response}"
             await context.bot.send_message(chat_id=int(config.LOG_GROUP_ID), text=log_text)
             
     except Exception as e:
@@ -141,9 +148,6 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
         
     chat_type = update.message.chat.type
-    if chat_type in ['group', 'supergroup']:
-        return  # Guruhlarda umuman o'qimaydi va javob bermaydi, faqat tashiydi.
-        
     user_id = update.effective_user.id
     text = update.message.text or update.message.caption or ""
     text = text.strip()
@@ -162,6 +166,16 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     if text.lower() == 'atchot':
         return await show_company_selection(update, context)
+        
+    if chat_type in ['group', 'supergroup']:
+        import group_order_wizard
+        items = []
+        for line in text.split('\n'):
+            if line.strip():
+                items.append({'raw_name': line.strip(), 'qty': 1})
+        order_data = {'items': items}
+        await group_order_wizard.start_group_order_wizard(update, context, order_data, update.message.message_id, update.message.chat_id)
+        return ConversationHandler.END
     else:
         # Xabarlarni yig'ish mantiqi (Aggregation)
         if user_id not in user_message_buffers:
@@ -870,6 +884,9 @@ def main():
     )
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("id", cmd_id))
+    
+    import group_order_wizard
+    application.add_handler(group_order_wizard.get_wizard_conversation_handler())
     
     application.add_handler(conv_handler)
     

@@ -1,5 +1,6 @@
 from odoo_client import OdooClient
 
+from image_generator import generate_receipt_image
 def get_client_debt(client_name: str) -> str:
     """
     Odoo bazasidan mijozning (klientning) umumiy qarzdorligi, muddati o'tgan qarzi va uning toifasini (A, B, C) olib beradi.
@@ -178,6 +179,19 @@ def create_intercompany_transfer_tool(source_warehouse_id: int, dest_company_id:
     """
     client = OdooClient()
     return client.create_intercompany_transfer(source_warehouse_id, dest_company_id, product_name, qty)
+
+def generate_receipt_image_tool(product_name: str, qty: float, location_from: str, location_to: str) -> str:
+    """
+    Zakaz (Intercompany transfer) tasdiqlangach, chiroyli qilib receipt/chek rasmini yaratib beradi.
+    Bot rasm yarata olmagani uchun shu vositadan foydalaning!
+    Sizga tovar nomi, miqdori va omborlarni berasiz. Bu sizga fayl nomini qaytaradi.
+    DIQQAT: Siz o'z javobingiz oxirida [IMAGE:fayl_nomi.png] degan yozuvni qo'shishingiz shart, toki foydalanuvchiga bu rasm yetib borsin!
+    """
+    try:
+        filename = generate_receipt_image(product_name, str(qty), location_from, location_to)
+        return f"Rasm yaratildi. Iltimos, javobingizda [IMAGE:{filename}] yozuvini qo'shing."
+    except Exception as e:
+        return f"Rasm yaratishda xato: {e}"
 
 # Asboblar ro'yxati (Gemini ga berish uchun)
 
@@ -404,14 +418,13 @@ def create_bron_tool(client_name: str, warehouse_name: str, reason_code: str, pr
         # Avtomatik ravishda tasdiqlaymiz (action_confirm) toki free to use darhol kamaysin
 
         try:
-
             client.models.execute_kw(client.db, client.uid, client.password, 'bron.order', 'action_confirm', [[new_bron_id]])
-
         except Exception as e:
-
-            pass # Agar action_confirm bo'lmasa yoki xato bersa ham, bron yaratilganligi haqida xabar qaytariladi
-
-            
+            try:
+                # Odoo da ba'zida action_confirm o'rniga button_confirm ishlatiladi
+                client.models.execute_kw(client.db, client.uid, client.password, 'bron.order', 'button_confirm', [[new_bron_id]])
+            except Exception as e2:
+                return f"Bron yaratildi, lekin tasdiqlashda xato yuz berdi: {e} | {e2}"
 
         return f"✅ Muvaffaqiyatli! Bron yaratildi va TASDIQLANDI (ID: {new_bron_id}). Mijoz: {partner[0]['name']}, Ombor: {wh[0]['name']}, Tovar: {prod[0]['name']} ({qty} miqdorda, {price} narxda)."
 
@@ -453,7 +466,7 @@ def get_pending_bron_cancel_requests_tool() -> str:
 
             
 
-        res = "@_ 9  Kutilayotgan Bron O'chirish so'rovlari:\n"
+        res = "@ _   9  Kutilayotgan Bron O'chirish so'rovlari:\n"
 
         for r in reqs:
 
@@ -523,7 +536,8 @@ odoo_tools_list = [
     check_product_availability_in_warehouse_tool,
     create_bron_tool,
     get_pending_bron_cancel_requests_tool,
-    action_bron_cancel_request_tool
+    action_bron_cancel_request_tool,
+    generate_receipt_image_tool,
 ]
 
 def update_odoo_record(model_name: str, record_id: int, fields_to_update: dict) -> str:

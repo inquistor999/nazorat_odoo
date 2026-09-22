@@ -91,8 +91,9 @@ async def process_next_product(bot, chat_id, context):
 async def handle_product_variant(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    if query.data == "prod_next_page":
-        await query.message.edit_text("Keyingi variantlar...")
+    if query.data in ["prod_next_page", "prod_notfound", "prod_error"]:
+        context.user_data['wizard_awaiting_manual_item_idx'] = context.user_data['wizard_current_item_idx']
+        await query.message.edit_text("🔍 Tovar Odoo'dan topilmadi.\nIltimos, Odoo dagi to'g'ri nomini chatga yozib yuboring:")
         return
         
     order = context.user_data['wizard_order']
@@ -199,8 +200,18 @@ async def finalize_order(bot, chat_id, context):
         await bot.send_photo(chat_id=group_id, photo=open(img, 'rb'), caption="Sklad - 2", reply_to_message_id=msg_id)
         os.remove(img)
 
+async def handle_manual_product_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    idx = context.user_data.get('wizard_awaiting_manual_item_idx')
+    if idx is not None:
+        order = context.user_data['wizard_order']
+        order['items'][idx]['raw_name'] = update.message.text
+        del context.user_data['wizard_awaiting_manual_item_idx']
+        await process_next_product(context.bot, update.message.chat_id, context)
+        return True
+    return False
+
 def get_wizard_handlers():
-    from telegram.ext import CallbackQueryHandler
+    from telegram.ext import CallbackQueryHandler, MessageHandler, filters
     return [
         CallbackQueryHandler(handle_product_variant, pattern="^prod_"),
         CallbackQueryHandler(handle_warehouse_mode, pattern="^(mode_|wh_single_)"),

@@ -829,12 +829,31 @@ class OdooClient:
         items = [{'product_name': '...', 'qty': 100}, ...]
         """
         try:
+            picking_type_from_id = False
+            location_from_id = False
+            if source_warehouse_id == 4:
+                picking_type_from_id = 47
+                location_from_id = 47
+            elif source_warehouse_id == 7:
+                picking_type_from_id = 90
+                location_from_id = 79
+                
+            picking_type_to_id = False
+            location_to_id = False
+            if dest_warehouse_id == 3:
+                picking_type_to_id = 34
+                location_to_id = 34
+                
             # Transfer hujjatini boshida yaratib olamiz
             vals = {
                 'company_from_id': 3, # B2B_COMPANY_ID
                 'warehouse_from_id': source_warehouse_id,
                 'company_to_id': dest_company_id,
                 'warehouse_to_id': dest_warehouse_id,
+                'picking_type_from_id': picking_type_from_id,
+                'location_from_id': location_from_id,
+                'picking_type_to_id': picking_type_to_id,
+                'location_to_id': location_to_id,
                 'state': 'draft'
             }
             transfer_id = self.models.execute_kw(self.db, self.uid, self.password,

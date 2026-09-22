@@ -854,6 +854,7 @@ class OdooClient:
                 'location_from_id': location_from_id,
                 'picking_type_to_id': picking_type_to_id,
                 'location_to_id': location_to_id,
+                'transit_location_id': 98,
                 'state': 'draft'
             }
             transfer_id = self.models.execute_kw(self.db, self.uid, self.password,

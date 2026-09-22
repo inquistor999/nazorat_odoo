@@ -172,46 +172,50 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
     if text.lower() == 'atchot':
         return await show_company_selection(update, context)
         
-    if chat_type in ['group', 'supergroup']:
-        lower_text = text.lower()
-        if 'zakaz' in lower_text:
-            import group_order_wizard
-            import re
+    lower_text = text.lower()
+    if 'zakaz' in lower_text:
+        import group_order_wizard
+        import re
+        
+        # Matndan faqat "zakaz" so'zidan keyingi qismini olamiz
+        order_text = lower_text.split('zakaz', 1)[-1].strip()
+        # Yoki ":" bo'lsa uni ham olib tashlaymiz
+        if order_text.startswith(':'):
+            order_text = order_text[1:].strip()
             
-            # Matndan faqat "zakaz" so'zidan keyingi qismini olamiz
-            order_text = lower_text.split('zakaz', 1)[-1].strip()
-            # Yoki ":" bo'lsa uni ham olib tashlaymiz
-            if order_text.startswith(':'):
-                order_text = order_text[1:].strip()
+        items = []
+        for line in order_text.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
                 
-            items = []
-            for line in order_text.split('\n'):
-                line = line.strip()
-                if not line:
-                    continue
-                    
-                # Son va (kg, litr, dona) ni ajratish uchun regex
-                match = re.search(r'(\d+(?:\.\d+)?)\s*(kg|litr|dona|L|g)', line, re.IGNORECASE)
-                if match:
-                    qty = float(match.group(1))
-                    raw_name = line.replace(match.group(0), "").strip()
+            # Son va (kg, litr, dona) ni ajratish uchun regex
+            match = re.search(r'(\d+(?:\.\d+)?)\s*(kg|litr|dona|L|g)', line, re.IGNORECASE)
+            if match:
+                qty = float(match.group(1))
+                raw_name = line.replace(match.group(0), "").strip()
+            else:
+                # Raqam topilmasa oxirgi so'zni son deb taxmin qilamiz
+                parts = line.split()
+                if parts and parts[-1].isdigit():
+                    qty = float(parts.pop())
+                    raw_name = " ".join(parts)
                 else:
-                    # Raqam topilmasa oxirgi so'zni son deb taxmin qilamiz
-                    parts = line.split()
-                    if parts and parts[-1].isdigit():
-                        qty = float(parts.pop())
-                        raw_name = " ".join(parts)
-                    else:
-                        qty = 1.0
-                        raw_name = line
-                        
-                items.append({'raw_name': raw_name, 'qty': qty})
-                
-            if items:
-                order_data = {'items': items}
-                await group_order_wizard.start_group_order_wizard(update, context, order_data, update.message.message_id, update.message.chat_id, order_text)
-                return ConversationHandler.END
-        # Agar zakaz so'zi bo'lmasa guruhdagi oddiy gaplarni bot e'tiborsiz qoldiradi (yoki log yozadi)
+                    qty = 1.0
+                    raw_name = line
+                    
+            items.append({'raw_name': raw_name, 'qty': qty})
+            
+        if items:
+            order_data = {'items': items}
+            await group_order_wizard.start_group_order_wizard(update, context, order_data, update.message.message_id, update.message.chat_id, order_text)
+            return ConversationHandler.END
+            
+        # Agar zakaz ichi bo'sh bo'lsa
+        if chat_type in ['group', 'supergroup']:
+            return ConversationHandler.END
+            
+    if chat_type in ['group', 'supergroup']:
         return ConversationHandler.END
     else:
         # Xabarlarni yig'ish mantiqi (Aggregation)

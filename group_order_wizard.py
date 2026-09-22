@@ -52,9 +52,20 @@ async def process_next_product(bot, chat_id, context):
     
     try:
         client = OdooClient()
+        
+        # Qidiruv logikasini aqlliroq qilish (kukuruz kraxmal -> ['name', 'ilike', 'kukuruz'], ['name', 'ilike', 'kraxmal'])
+        words = item['raw_name'].split()
+        domain = []
+        for w in words:
+            if len(w) >= 3: # 3 ta harfdan kam so'zlarni qidirmaymiz (masalan, 'va')
+                domain.append(('name', 'ilike', w))
+                
+        if not domain:
+            domain = [('name', 'ilike', item['raw_name'])]
+            
         products = client.models.execute_kw(client.db, client.uid, client.password, 
             'product.product', 'search_read', 
-            [[('name', 'ilike', item['raw_name'])]], 
+            [domain], 
             {'fields': ['id', 'name'], 'limit': 4})
             
         if products and isinstance(products, list):

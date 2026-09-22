@@ -208,7 +208,7 @@ async def finalize_order(bot, chat_id, context):
     if wh_1_items:
         # Create Intercompany Transfer
         items_for_transfer = [{'product_name': i.get('matched_name') or i.get('raw_name'), 'qty': i['qty']} for i in wh_1_items]
-        transfer_res = client.create_intercompany_transfer_bulk(source_warehouse_id=4, dest_company_id=dest_company_id, items=items_for_transfer)
+        transfer_res = client.create_intercompany_transfer_bulk(source_warehouse_id=4, dest_company_id=dest_company_id, dest_warehouse_id=3, items=items_for_transfer)
         
         # Generate new receipt
         img = generate_receipt_image(wh_1_items, "Sklad - 1", "O'rikzor")
@@ -218,7 +218,7 @@ async def finalize_order(bot, chat_id, context):
     if wh_2_items:
         # Create Intercompany Transfer
         items_for_transfer = [{'product_name': i.get('matched_name') or i.get('raw_name'), 'qty': i['qty']} for i in wh_2_items]
-        transfer_res = client.create_intercompany_transfer_bulk(source_warehouse_id=7, dest_company_id=dest_company_id, items=items_for_transfer)
+        transfer_res = client.create_intercompany_transfer_bulk(source_warehouse_id=7, dest_company_id=dest_company_id, dest_warehouse_id=3, items=items_for_transfer)
         
         # Generate new receipt
         img = generate_receipt_image(wh_2_items, "Sklad - 2", "O'rikzor")

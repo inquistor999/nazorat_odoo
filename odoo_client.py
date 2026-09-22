@@ -823,7 +823,7 @@ class OdooClient:
         except Exception as e:
             return f"Client Profile xatosi: {e}"
 
-    def create_intercompany_transfer_bulk(self, source_warehouse_id: int, dest_company_id: int, items: list) -> str:
+    def create_intercompany_transfer_bulk(self, source_warehouse_id: int, dest_company_id: int, dest_warehouse_id: int, items: list) -> str:
         """
         B2B dan boshqa kompaniyaga bitta hujjat ichida bir nechta tovar (line) yaratish.
         items = [{'product_name': '...', 'qty': 100}, ...]
@@ -834,6 +834,7 @@ class OdooClient:
                 'company_from_id': 3, # B2B_COMPANY_ID
                 'warehouse_from_id': source_warehouse_id,
                 'company_to_id': dest_company_id,
+                'warehouse_to_id': dest_warehouse_id,
                 'state': 'draft'
             }
             transfer_id = self.models.execute_kw(self.db, self.uid, self.password,

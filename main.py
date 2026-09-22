@@ -208,7 +208,8 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
             
         if items:
             order_data = {'items': items}
-            await group_order_wizard.start_group_order_wizard(update, context, order_data, update.message.message_id, update.message.chat_id, order_text)
+            import order_queue_manager
+            await order_queue_manager.add_order_to_queue(update, context, order_data, update.message.message_id, update.message.chat_id, order_text)
             return ConversationHandler.END
             
         # Agar zakaz ichi bo'sh bo'lsa

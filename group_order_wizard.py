@@ -266,11 +266,17 @@ async def handle_wizard_confirm(update, context):
     os.remove(img)
     
     await query.message.edit_caption(caption=f"✅ {wh_name} uchun tasdiqlandi va guruhga jo'natildi!\nOdoo: {transfer_res}")
+    
+    import order_queue_manager
+    order_queue_manager.release_wizard(context)
 
 async def handle_wizard_cancel(update, context):
     query = update.callback_query
     await query.answer()
     await query.message.edit_caption(caption="❌ Bekor qilindi.")
+    
+    import order_queue_manager
+    order_queue_manager.release_wizard(context)
 
 async def handle_manual_product_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     idx = context.user_data.get('wizard_awaiting_manual_item_idx')

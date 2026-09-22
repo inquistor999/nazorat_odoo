@@ -33,31 +33,29 @@ async def start_group_order_wizard(update: Update, context: ContextTypes.DEFAULT
     context.user_data['wizard_msg_id'] = original_message_id
     context.user_data['wizard_group_id'] = group_id
     context.user_data['wizard_current_item_idx'] = 0
+    context.user_data['wizard_search_offset'] = 0
 
     await process_next_product(context.bot, admin_chat_id, context)
 
-async def process_next_product(bot, chat_id, context):
+async def process_next_product(bot, chat_id, context, edit_message_id=None):
     order = context.user_data['wizard_order']
     idx = context.user_data['wizard_current_item_idx']
+    offset = context.user_data.get('wizard_search_offset', 0)
     
     if idx >= len(order['items']):
         return await check_stock_for_order(bot, chat_id, context)
         
     item = order['items'][idx]
-    
-    # Haqiqiy Odoo dagi tovarlarni izlash
     from odoo_client import OdooClient
     
     keyboard = []
     
     try:
         client = OdooClient()
-        
-        # Qidiruv logikasini aqlliroq qilish (kukuruz kraxmal -> ['name', 'ilike', 'kukuruz'], ['name', 'ilike', 'kraxmal'])
         words = item['raw_name'].split()
         domain = []
         for w in words:
-            if len(w) >= 3: # 3 ta harfdan kam so'zlarni qidirmaymiz (masalan, 'va')
+            if len(w) >= 3:
                 domain.append(('name', 'ilike', w))
                 
         if not domain:
@@ -66,34 +64,43 @@ async def process_next_product(bot, chat_id, context):
         products = client.models.execute_kw(client.db, client.uid, client.password, 
             'product.product', 'search_read', 
             [domain], 
-            {'fields': ['id', 'name'], 'limit': 4})
+            {'fields': ['id', 'name'], 'limit': 4, 'offset': offset})
             
         if products and isinstance(products, list):
-            # Maksimal 4 ta variant chiqarish
             for p in products:
                 name = p.get('name', 'Nomsiz')
-                # Tugma textiga sig'ishi uchun uzunligini kesish
                 display_name = name[:40] + '...' if len(name) > 40 else name
                 keyboard.append([InlineKeyboardButton(display_name, callback_data=f"prod_{name[:20]}")])
+            
+            if len(products) == 4:
+                keyboard.append([InlineKeyboardButton("🔄 Yana variantlar (Next)", callback_data="prod_next_page")])
         else:
-            # Agar topilmasa
-            keyboard.append([InlineKeyboardButton("Variant topilmadi", callback_data="prod_notfound")])
+            if offset == 0:
+                keyboard.append([InlineKeyboardButton("Variant topilmadi", callback_data="prod_notfound")])
     except Exception as e:
-        # Xatolik yuz bersa (JSON parse bo'lmasa)
         keyboard.append([InlineKeyboardButton("Variant topilmadi (Xato)", callback_data="prod_error")])
         
-    keyboard.append([InlineKeyboardButton("Bu emas (boshqa)", callback_data="prod_next_page")])
+    keyboard.append([InlineKeyboardButton("✏️ Qo'lda yozish (Manual)", callback_data="prod_notfound")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     text = f"{idx + 1}. zakaz : {item['raw_name']}\nOdoo dan to'g'ri nomni tanlang:"
-    await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
+    
+    if edit_message_id:
+        await bot.edit_message_text(chat_id=chat_id, message_id=edit_message_id, text=text, reply_markup=reply_markup)
+    else:
+        await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
 
 async def handle_product_variant(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    if query.data in ["prod_next_page", "prod_notfound", "prod_error"]:
+    if query.data == "prod_next_page":
+        context.user_data['wizard_search_offset'] = context.user_data.get('wizard_search_offset', 0) + 4
+        await process_next_product(context.bot, update.effective_chat.id, context, edit_message_id=query.message.message_id)
+        return
+        
+    if query.data in ["prod_notfound", "prod_error"]:
         context.user_data['wizard_awaiting_manual_item_idx'] = context.user_data['wizard_current_item_idx']
-        await query.message.edit_text("🔍 Tovar Odoo'dan topilmadi.\nIltimos, Odoo dagi to'g'ri nomini chatga yozib yuboring:")
+        await query.message.edit_text("🔍 Tovar Odoo'dan topilmadi yoki kerakli variant yo'q.\nIltimos, Odoo dagi to'g'ri nomini chatga yozib yuboring:")
         return
         
     order = context.user_data['wizard_order']
@@ -112,6 +119,7 @@ async def handle_product_variant(update: Update, context: ContextTypes.DEFAULT_T
                 
     order['items'][idx]['matched_name'] = selected_name
     context.user_data['wizard_current_item_idx'] += 1
+    context.user_data['wizard_search_offset'] = 0
     await process_next_product(context.bot, update.effective_chat.id, context)
 
 async def check_stock_for_order(bot, chat_id, context):
@@ -206,6 +214,7 @@ async def handle_manual_product_name(update: Update, context: ContextTypes.DEFAU
         order = context.user_data['wizard_order']
         order['items'][idx]['raw_name'] = update.message.text
         del context.user_data['wizard_awaiting_manual_item_idx']
+        context.user_data['wizard_search_offset'] = 0
         await process_next_product(context.bot, update.message.chat_id, context)
         return True
     return False

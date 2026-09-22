@@ -204,7 +204,7 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
                 
             if items:
                 order_data = {'items': items}
-                await group_order_wizard.start_group_order_wizard(update, context, order_data, update.message.message_id, update.message.chat_id)
+                await group_order_wizard.start_group_order_wizard(update, context, order_data, update.message.message_id, update.message.chat_id, order_text)
                 return ConversationHandler.END
         # Agar zakaz so'zi bo'lmasa guruhdagi oddiy gaplarni bot e'tiborsiz qoldiradi (yoki log yozadi)
         return ConversationHandler.END
@@ -945,7 +945,8 @@ def main():
     application.add_handler(CommandHandler("id", cmd_id))
     
     import group_order_wizard
-    application.add_handler(group_order_wizard.get_wizard_conversation_handler())
+    for h in group_order_wizard.get_wizard_handlers():
+        application.add_handler(h)
     
     application.add_handler(conv_handler)
     

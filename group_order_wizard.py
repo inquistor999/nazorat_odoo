@@ -14,13 +14,20 @@ from image_generator import generate_receipt_image
     CONFIRMING_ORDER,
 ) = range(5)
 
-async def start_group_order_wizard(update: Update, context: ContextTypes.DEFAULT_TYPE, order_data: dict, original_message_id: int, group_id: int):
+async def start_group_order_wizard(update: Update, context: ContextTypes.DEFAULT_TYPE, order_data: dict, original_message_id: int, group_id: int, full_text: str = ""):
     """
     Triggered from main.py when a group order is detected.
     """
     admin_chat_id = os.getenv("TELEGRAM_CHAT_ID")
     if not admin_chat_id:
         return
+
+    from datetime import datetime
+    today = datetime.now().strftime("%d.%m.%Y")
+    
+    # Avval to'liq matnni tashlaymiz
+    initial_text = f"Zakaz : {today}\n{full_text}"
+    await context.bot.send_message(chat_id=admin_chat_id, text=initial_text)
 
     context.user_data['wizard_order'] = order_data
     context.user_data['wizard_msg_id'] = original_message_id
@@ -67,7 +74,7 @@ async def process_next_product(bot, chat_id, context):
     keyboard.append([InlineKeyboardButton("Bu emas (boshqa)", callback_data="prod_next_page")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
-    text = f"📦 Guruhdan zakaz:\n'{item['raw_name']}' ({item['qty']} kg)\nOdoo dan to'g'ri nomni tanlang:"
+    text = f"{idx + 1}. zakaz : {item['raw_name']}\nOdoo dan to'g'ri nomni tanlang:"
     await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
 
 async def handle_product_variant(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -181,20 +188,10 @@ async def finalize_order(bot, chat_id, context):
         await bot.send_photo(chat_id=group_id, photo=open(img, 'rb'), caption="Sklad - 2", reply_to_message_id=msg_id)
         os.remove(img)
 
-def get_wizard_conversation_handler():
-    from telegram.ext import CallbackQueryHandler, MessageHandler, filters
-    return ConversationHandler(
-        entry_points=[CallbackQueryHandler(handle_product_variant, pattern="^prod_")],
-        states={
-            SELECTING_PRODUCT_VARIANT: [
-                CallbackQueryHandler(handle_product_variant, pattern="^prod_")
-            ],
-            SELECTING_WAREHOUSE_MODE: [
-                CallbackQueryHandler(handle_warehouse_mode, pattern="^(mode_|wh_single_)")
-            ],
-            SELECTING_WAREHOUSE_FOR_ITEM: [
-                CallbackQueryHandler(handle_mixed_warehouse, pattern="^wh_mixed_")
-            ]
-        },
-        fallbacks=[]
-    )
+def get_wizard_handlers():
+    from telegram.ext import CallbackQueryHandler
+    return [
+        CallbackQueryHandler(handle_product_variant, pattern="^prod_"),
+        CallbackQueryHandler(handle_warehouse_mode, pattern="^(mode_|wh_single_)"),
+        CallbackQueryHandler(handle_mixed_warehouse, pattern="^wh_mixed_")
+    ]

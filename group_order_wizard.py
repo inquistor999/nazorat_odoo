@@ -189,15 +189,67 @@ async def handle_mixed_warehouse(update: Update, context: ContextTypes.DEFAULT_T
     await ask_warehouse_for_item(context.bot, update.effective_chat.id, context)
 
 
+
 async def finalize_order(bot, chat_id, context):
     order = context.user_data['wizard_order']
-    group_id = context.user_data['wizard_group_id']
-    msg_id = context.user_data['wizard_msg_id']
     
     wh_1_items = [i for i in order['items'] if i.get('warehouse') == 'Sklad - 1']
     wh_2_items = [i for i in order['items'] if i.get('warehouse') == 'Sklad - 2']
     
-    await bot.send_message(chat_id=chat_id, text="✅ Zakaz tayyor, Odoo'da yaratilmoqda va guruhga yuborilmoqda...")
+    from image_generator import generate_receipt_image
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    
+    keyboard = [
+        [InlineKeyboardButton("✅ Tasdiqlash (Xa)", callback_data="wizard_confirm")],
+        [InlineKeyboardButton("❌ Bekor qilish (Yo'q)", callback_data="wizard_cancel")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await bot.send_message(chat_id=chat_id, text="Tayyorlanayotgan chek rasmi (Preview):")
+    
+    if wh_1_items:
+        img1 = generate_receipt_image(wh_1_items, "Sklad - 1", "O'rikzor")
+        with open(img1, 'rb') as f:
+            await bot.send_photo(chat_id=chat_id, photo=f, caption="Sklad - 1 cheki. Tasdiqlaysizmi?", reply_markup=reply_markup)
+        os.remove(img1)
+        
+    if wh_2_items:
+        img2 = generate_receipt_image(wh_2_items, "Sklad - 2", "O'rikzor")
+        with open(img2, 'rb') as f:
+            await bot.send_photo(chat_id=chat_id, photo=f, caption="Sklad - 2 cheki. Tasdiqlaysizmi?", reply_markup=reply_markup)
+        os.remove(img2)
+
+async def handle_wizard_confirm(update, context):
+    query = update.callback_query
+    await query.answer()
+    
+    # Guruhga yuborish va Odoo ga yozish
+    chat_id = update.effective_chat.id
+    order = context.user_data['wizard_order']
+    group_id = context.user_data['wizard_group_id']
+    msg_id = context.user_data['wizard_msg_id']
+    
+    # Qaysi skladligini captiondan aniqlaymiz
+    is_wh_1 = "Sklad - 1" in query.message.caption
+    is_wh_2 = "Sklad - 2" in query.message.caption
+    
+    wh_items = []
+    source_wh = 0
+    wh_name = ""
+    if is_wh_1:
+        wh_items = [i for i in order['items'] if i.get('warehouse') == 'Sklad - 1']
+        source_wh = 4
+        wh_name = "Sklad - 1"
+    elif is_wh_2:
+        wh_items = [i for i in order['items'] if i.get('warehouse') == 'Sklad - 2']
+        source_wh = 7
+        wh_name = "Sklad - 2"
+        
+    if not wh_items:
+        await query.message.edit_caption(caption="Xato: Tovarlar topilmadi.")
+        return
+        
+    await query.message.edit_caption(caption=f"Odoo'ga yozilmoqda... Kuting.")
     
     from odoo_client import OdooClient
     from image_generator import generate_receipt_image
@@ -205,25 +257,20 @@ async def finalize_order(bot, chat_id, context):
     client = OdooClient()
     dest_company_id = 2 # Urikzor company ID
     
-    if wh_1_items:
-        # Create Intercompany Transfer
-        items_for_transfer = [{'product_name': i.get('matched_name') or i.get('raw_name'), 'qty': i['qty']} for i in wh_1_items]
-        transfer_res = client.create_intercompany_transfer_bulk(source_warehouse_id=4, dest_company_id=dest_company_id, dest_warehouse_id=3, items=items_for_transfer)
-        
-        # Generate new receipt
-        img = generate_receipt_image(wh_1_items, "Sklad - 1", "O'rikzor")
-        await bot.send_photo(chat_id=group_id, photo=open(img, 'rb'), caption=f"Sklad - 1\n\nOdoo Natijasi:\n{transfer_res}", reply_to_message_id=msg_id)
-        os.remove(img)
-        
-    if wh_2_items:
-        # Create Intercompany Transfer
-        items_for_transfer = [{'product_name': i.get('matched_name') or i.get('raw_name'), 'qty': i['qty']} for i in wh_2_items]
-        transfer_res = client.create_intercompany_transfer_bulk(source_warehouse_id=7, dest_company_id=dest_company_id, dest_warehouse_id=3, items=items_for_transfer)
-        
-        # Generate new receipt
-        img = generate_receipt_image(wh_2_items, "Sklad - 2", "O'rikzor")
-        await bot.send_photo(chat_id=group_id, photo=open(img, 'rb'), caption=f"Sklad - 2\n\nOdoo Natijasi:\n{transfer_res}", reply_to_message_id=msg_id)
-        os.remove(img)
+    items_for_transfer = [{'product_name': i.get('matched_name') or i.get('raw_name'), 'qty': i['qty']} for i in wh_items]
+    transfer_res = client.create_intercompany_transfer_bulk(source_warehouse_id=source_wh, dest_company_id=dest_company_id, dest_warehouse_id=3, items=items_for_transfer)
+    
+    img = generate_receipt_image(wh_items, wh_name, "O'rikzor")
+    with open(img, 'rb') as f:
+        await context.bot.send_photo(chat_id=group_id, photo=f, caption=f"{wh_name}\n\nOdoo Natijasi:\n{transfer_res}", reply_to_message_id=msg_id)
+    os.remove(img)
+    
+    await query.message.edit_caption(caption=f"✅ {wh_name} uchun tasdiqlandi va guruhga jo'natildi!\nOdoo: {transfer_res}")
+
+async def handle_wizard_cancel(update, context):
+    query = update.callback_query
+    await query.answer()
+    await query.message.edit_caption(caption="❌ Bekor qilindi.")
 
 async def handle_manual_product_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     idx = context.user_data.get('wizard_awaiting_manual_item_idx')
@@ -241,5 +288,7 @@ def get_wizard_handlers():
     return [
         CallbackQueryHandler(handle_product_variant, pattern="^prod_"),
         CallbackQueryHandler(handle_warehouse_mode, pattern="^(mode_|wh_single_)"),
-        CallbackQueryHandler(handle_mixed_warehouse, pattern="^wh_mixed_")
+        CallbackQueryHandler(handle_mixed_warehouse, pattern="^wh_mixed_"),
+        CallbackQueryHandler(handle_wizard_confirm, pattern="^wizard_confirm$"),
+        CallbackQueryHandler(handle_wizard_cancel, pattern="^wizard_cancel$")
     ]

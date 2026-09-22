@@ -707,27 +707,68 @@ class OdooClient:
 
     def get_accounting_reports(self, report_type: str, company_id: int = 1, account_code: str = None, partner_name: str = None) -> str:
         try:
+            from datetime import datetime
+            today_str = datetime.now().strftime('%Y-%m-%d')
+            
             if report_type == 'partner_debts':
                 domain = [('supplier_rank', '>', 0)]
                 if partner_name:
                     domain.append(('name', 'ilike', partner_name))
-                partners = self.models.execute_kw(self.db, self.uid, self.password, 'res.partner', 'search_read', [domain], {'fields': ['name', 'credit', 'debit']})
+                partners = self.models.execute_kw(self.db, self.uid, self.password, 'res.partner', 'search_read', [domain], {'fields': ['id', 'name', 'credit', 'debit']})
                 if not partners:
                     return "Bunday yetkazib beruvchi topilmadi."
-                res = "Yetkazib beruvchilar qarzi (Act sverka):\n"
+                
+                res = "📊 YETKAZIB BERUVCHILAR QARZI:\n"
                 for p in partners[:15]:
                     if p['credit'] > 0 or p['debit'] > 0:
-                        res += f"- {p['name']}: Bizning qarz = {p['credit']}, Ularning qarzi = {p['debit']}\n"
+                        overdue = 0.0
+                        if p['credit'] > 0:
+                            inv_domain = [('partner_id', '=', p['id']), ('move_type', 'in', ['in_invoice', 'in_receipt']), ('payment_state', 'in', ['not_paid', 'partial']), ('invoice_date_due', '<', today_str)]
+                            overdue_invs = self.models.execute_kw(self.db, self.uid, self.password, 'account.move', 'search_read', [inv_domain], {'fields': ['amount_residual']})
+                            overdue = sum(inv['amount_residual'] for inv in overdue_invs)
+                        
+                        res += f"\n👤 {p['name']}\n"
+                        if p['credit'] > 0:
+                            res += f"   ➖ Bizning qarzimiz: {p['credit']:,.2f}\n"
+                            res += f"   ⚠️ Shundan prosrochka: {overdue:,.2f}\n"
+                            res += f"   ⏳ Hali muddati bor: {p['credit'] - overdue:,.2f}\n"
+                        if p['debit'] > 0:
+                            res += f"   ➕ Ularning qarzi: {p['debit']:,.2f}\n"
                 return res
+
             elif report_type == 'account_balance':
-                if not account_code: return "account_code kerak."
-                # Kunlik tushumlar va qoldiq
+                if not account_code: return "account_code (masalan '1412') kerak."
                 domain = [('account_id.code', '=', account_code)]
                 if company_id:
                     domain.append(('company_id', '=', company_id))
-                lines = self.models.execute_kw(self.db, self.uid, self.password, 'account.move.line', 'read_group', [domain], {'fields': ['debit', 'credit', 'balance'], 'groupby': ['account_id']})
-                if not lines: return f"{account_code} shotida qoldiq yo'q."
-                return f"Shot {account_code} qoldig'i (Kompaniya: {company_id}): {lines[0].get('balance', 0)}"
-            return "Noma'lum report_type"
+                
+                lines = self.models.execute_kw(self.db, self.uid, self.password, 'account.move.line', 'search_read', [domain], {'fields': ['balance', 'amount_currency', 'currency_id']})
+                if not lines: return f"🏦 Shot {account_code} bo'yicha qoldiq yo'q."
+                
+                total_balance = sum(l.get('balance', 0) for l in lines)
+                total_currency = sum(l.get('amount_currency', 0) for l in lines)
+                
+                res = f"🏦 Shot {account_code} qoldig'i (Kompaniya ID: {company_id}):\n"
+                res += f"💵 So'mda (Bazaviy): {total_balance:,.2f}\n"
+                if total_currency != 0:
+                    res += f"💲 Valyutada: {total_currency:,.2f}\n"
+                return res
+
+            elif report_type == 'daily_cash':
+                domain = [('date', '=', today_str)]
+                if company_id:
+                    domain.append(('company_id', '=', company_id))
+                payments = self.models.execute_kw(self.db, self.uid, self.password, 'account.payment', 'search_read', [domain], {'fields': ['payment_type', 'amount', 'partner_id', 'journal_id', 'state']})
+                if not payments: return f"📅 Bugun ({today_str}) uchun kassa aylanmasi topilmadi."
+                
+                inflows = sum(p['amount'] for p in payments if p['payment_type'] == 'inbound' and p['state'] == 'posted')
+                outflows = sum(p['amount'] for p in payments if p['payment_type'] == 'outbound' and p['state'] == 'posted')
+                
+                res = f"📅 Kunlik aylanma ({today_str}):\n"
+                res += f"📥 Kirim: {inflows:,.2f}\n"
+                res += f"📤 Chiqim (To'lovlar): {outflows:,.2f}\n"
+                return res
+
+            return "❌ Noma'lum report_type"
         except Exception as e:
             return f"Accounting xatosi: {e}"

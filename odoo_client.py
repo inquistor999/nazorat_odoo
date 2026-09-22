@@ -772,3 +772,53 @@ class OdooClient:
             return "❌ Noma'lum report_type"
         except Exception as e:
             return f"Accounting xatosi: {e}"
+
+    def get_inventory_analytics(self, product_name: str) -> str:
+        try:
+            products = self.models.execute_kw(self.db, self.uid, self.password, 'product.product', 'search_read', 
+                [[('name', 'ilike', product_name)]], {'fields': ['id', 'name', 'qty_available', 'incoming_qty', 'outgoing_qty', 'free_qty'], 'limit': 3})
+            
+            if not products:
+                return f"Omborda '{product_name}' nomli tovar topilmadi."
+            
+            res = f"📦 SKLAD ANALITIKASI ('{product_name}'):\n"
+            for p in products:
+                res += f"\n🔸 {p['name']}\n"
+                res += f"   - Erkin qoldiq (Sotishga tayyor): {p.get('free_qty', 0):,.2f}\n"
+                res += f"   - Band qilingan (Zabronirovanno): {p.get('outgoing_qty', 0):,.2f}\n"
+                res += f"   - Yo'ldagi (Kutilyotgan): {p.get('incoming_qty', 0):,.2f}\n"
+                res += f"   - Jami qoldiq (Fizicheskiy): {p.get('qty_available', 0):,.2f}\n"
+            return res
+        except Exception as e:
+            return f"Inventory xatosi: {e}"
+
+    def get_client_profile(self, partner_name: str) -> str:
+        try:
+            partners = self.models.execute_kw(self.db, self.uid, self.password, 'res.partner', 'search_read', 
+                [[('name', 'ilike', partner_name)]], {'fields': ['id', 'name', 'credit', 'debit', 'total_invoiced', 'create_date'], 'limit': 1})
+            
+            if not partners:
+                return f"'{partner_name}' nomli mijoz/hamkor topilmadi."
+                
+            p = partners[0]
+            partner_id = p['id']
+            
+            # Oxirgi xaridni topish
+            last_order = self.models.execute_kw(self.db, self.uid, self.password, 'sale.order', 'search_read', 
+                [[('partner_id', '=', partner_id), ('state', 'in', ['sale', 'done'])]], {'fields': ['date_order', 'amount_total'], 'order': 'date_order desc', 'limit': 1})
+            
+            res = f"👤 MIJOZ 360 PROFILI: {p['name']}\n"
+            res += f"-----------------------------------------\n"
+            res += f"💰 Umumiy savdo aylanmasi (Tarix): {p.get('total_invoiced', 0):,.2f}\n"
+            res += f"➖ Bizning qarzimiz: {p.get('credit', 0):,.2f}\n"
+            res += f"➕ Ularning qarzi (Debitor): {p.get('debit', 0):,.2f}\n"
+            
+            if last_order:
+                lo = last_order[0]
+                res += f"🛒 Oxirgi xarid: {lo['date_order']} (Summa: {lo['amount_total']:,.2f})\n"
+            else:
+                res += f"🛒 Oxirgi xarid: Hech narsa sotib olmagan.\n"
+            
+            return res
+        except Exception as e:
+            return f"Client Profile xatosi: {e}"

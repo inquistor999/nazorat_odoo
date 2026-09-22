@@ -723,3 +723,19 @@ def get_accounting_reports_tool(report_type: str, company_id: int = 1, account_c
     from odoo_client import OdooClient
     client = OdooClient()
     return client.get_accounting_reports(report_type, company_id, account_code, partner_name)
+
+def get_inventory_analytics_tool(product_name: str) -> str:
+    """
+    Tovarning ombordagi holatini (erkin qoldiq, band qilingan, yo'ldagi va fizik qoldiq) to'liq chuqur analiz qilish uchun ishlating.
+    """
+    from odoo_client import OdooClient
+    client = OdooClient()
+    return client.get_inventory_analytics(product_name)
+
+def client_profile_tool(partner_name: str) -> str:
+    """
+    Mijoz yoki Hamkorning to'liq rentabelligi (umumiy hayoti davomidagi xaridlari, qarzi va oxirgi marta xarid qilgani) ni ko'rish uchun ishlating.
+    """
+    from odoo_client import OdooClient
+    client = OdooClient()
+    return client.get_client_profile(partner_name)

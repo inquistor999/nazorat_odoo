@@ -704,3 +704,30 @@ class OdooClient:
             return f"✅ Muvaffaqiyatli yaratildi. Transfer ID: {transfer_id} (Holat: Draft). Tasdiqlash kerak."
         except Exception as e:
             return f"Xato: {e}"
+
+    def get_accounting_reports(self, report_type: str, company_id: int = 1, account_code: str = None, partner_name: str = None) -> str:
+        try:
+            if report_type == 'partner_debts':
+                domain = [('supplier_rank', '>', 0)]
+                if partner_name:
+                    domain.append(('name', 'ilike', partner_name))
+                partners = self.models.execute_kw(self.db, self.uid, self.password, 'res.partner', 'search_read', [domain], {'fields': ['name', 'credit', 'debit']})
+                if not partners:
+                    return "Bunday yetkazib beruvchi topilmadi."
+                res = "Yetkazib beruvchilar qarzi (Act sverka):\n"
+                for p in partners[:15]:
+                    if p['credit'] > 0 or p['debit'] > 0:
+                        res += f"- {p['name']}: Bizning qarz = {p['credit']}, Ularning qarzi = {p['debit']}\n"
+                return res
+            elif report_type == 'account_balance':
+                if not account_code: return "account_code kerak."
+                # Kunlik tushumlar va qoldiq
+                domain = [('account_id.code', '=', account_code)]
+                if company_id:
+                    domain.append(('company_id', '=', company_id))
+                lines = self.models.execute_kw(self.db, self.uid, self.password, 'account.move.line', 'read_group', [domain], {'fields': ['debit', 'credit', 'balance'], 'groupby': ['account_id']})
+                if not lines: return f"{account_code} shotida qoldiq yo'q."
+                return f"Shot {account_code} qoldig'i (Kompaniya: {company_id}): {lines[0].get('balance', 0)}"
+            return "Noma'lum report_type"
+        except Exception as e:
+            return f"Accounting xatosi: {e}"

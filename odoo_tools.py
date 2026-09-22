@@ -710,3 +710,16 @@ def execute_odoo_shell_command(python_code: str) -> str:
         return f"💻 Shell Script bajarildi. Natija: {result}"
     except Exception as e:
         return f"Shell Script Xatosi: {e}"
+
+def get_accounting_reports_tool(report_type: str, company_id: int = 1, account_code: str = None, partner_name: str = None) -> str:
+    """
+    Odoo hisobotlarini (Buxgalteriya, qarzlar) olish uchun.
+    Args:
+        report_type: 'partner_debts' (postavshik qarzlari, prosrochka va oddiy), 'account_balance' (muayyan shot qoldig'i, masalan '1412' sum yoki dollar), 'daily_cash' (kunlik kirim/chiqim).
+        company_id: Kompaniya ID si (Citric = 1, Urikzor = 2, B2B = 3).
+        account_code: 'account_balance' uchun shot kodi (masalan '1412').
+        partner_name: (Ixtiyoriy) Agar bitta mijoz kerak bo'lsa.
+    """
+    from odoo_client import OdooClient
+    client = OdooClient()
+    return client.get_accounting_reports(report_type, company_id, account_code, partner_name)

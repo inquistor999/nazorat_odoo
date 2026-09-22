@@ -822,3 +822,57 @@ class OdooClient:
             return res
         except Exception as e:
             return f"Client Profile xatosi: {e}"
+
+    def create_intercompany_transfer_bulk(self, source_warehouse_id: int, dest_company_id: int, items: list) -> str:
+        """
+        B2B dan boshqa kompaniyaga bitta hujjat ichida bir nechta tovar (line) yaratish.
+        items = [{'product_name': '...', 'qty': 100}, ...]
+        """
+        try:
+            # Transfer hujjatini boshida yaratib olamiz
+            vals = {
+                'company_from_id': 3, # B2B_COMPANY_ID
+                'warehouse_from_id': source_warehouse_id,
+                'company_to_id': dest_company_id,
+                'state': 'draft'
+            }
+            transfer_id = self.models.execute_kw(self.db, self.uid, self.password,
+                'intercompany.transfer', 'create', [vals])
+                
+            added_lines = 0
+            errors = []
+            
+            # Har bir tovar uchun Line qo'shamiz
+            for item in items:
+                p_name = item.get('product_name')
+                qty_f = float(item.get('qty', 0))
+                
+                product = self._find_product(p_name)
+                if not product:
+                    errors.append(f"'{p_name}' topilmadi")
+                    continue
+                    
+                line_vals = {
+                    'transfer_id': transfer_id,
+                    'product_id': product['id'],
+                    'quantity': qty_f,
+                    'uom_id': product['uom_id'][0] if product.get('uom_id') else 1
+                }
+                
+                self.models.execute_kw(self.db, self.uid, self.password,
+                    'intercompany.transfer.line', 'create', [line_vals])
+                added_lines += 1
+                
+            if added_lines == 0:
+                # Agar bitta ham tovar tushmasa o'chirib tashlaymiz
+                self.models.execute_kw(self.db, self.uid, self.password,
+                    'intercompany.transfer', 'unlink', [[transfer_id]])
+                return f"Xato: Barcha tovarlar xato kiritilgan. {errors}"
+            
+            # Tasdiqlash
+            self.models.execute_kw(self.db, self.uid, self.password,
+                'intercompany.transfer', 'action_confirm', [[transfer_id]])
+            
+            return f"✅ Intercompany Transfer yaratildi va Tasdiqlandi (Confirmed)! Hujjat ID: {transfer_id} ({added_lines} ta qator)"
+        except Exception as e:
+            return f"Intercompany Xatosi: {e}"

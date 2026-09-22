@@ -188,6 +188,7 @@ async def handle_mixed_warehouse(update: Update, context: ContextTypes.DEFAULT_T
     context.user_data['wizard_wh_idx'] += 1
     await ask_warehouse_for_item(context.bot, update.effective_chat.id, context)
 
+
 async def finalize_order(bot, chat_id, context):
     order = context.user_data['wizard_order']
     group_id = context.user_data['wizard_group_id']
@@ -196,16 +197,32 @@ async def finalize_order(bot, chat_id, context):
     wh_1_items = [i for i in order['items'] if i.get('warehouse') == 'Sklad - 1']
     wh_2_items = [i for i in order['items'] if i.get('warehouse') == 'Sklad - 2']
     
-    await bot.send_message(chat_id=chat_id, text="✅ Zakaz tayyor, guruhga yuborilmoqda...")
+    await bot.send_message(chat_id=chat_id, text="✅ Zakaz tayyor, Odoo'da yaratilmoqda va guruhga yuborilmoqda...")
+    
+    from odoo_client import OdooClient
+    from image_generator import generate_receipt_image
+    
+    client = OdooClient()
+    dest_company_id = 2 # Urikzor company ID
     
     if wh_1_items:
-        img = generate_receipt_image(f"{len(wh_1_items)} xil tovar", sum(float(i['qty']) for i in wh_1_items), "Sklad - 1", "O'rikzor")
-        await bot.send_photo(chat_id=group_id, photo=open(img, 'rb'), caption="Sklad - 1", reply_to_message_id=msg_id)
+        # Create Intercompany Transfer
+        items_for_transfer = [{'product_name': i.get('matched_name') or i.get('raw_name'), 'qty': i['qty']} for i in wh_1_items]
+        transfer_res = client.create_intercompany_transfer_bulk(source_warehouse_id=4, dest_company_id=dest_company_id, items=items_for_transfer)
+        
+        # Generate new receipt
+        img = generate_receipt_image(wh_1_items, "Sklad - 1", "O'rikzor")
+        await bot.send_photo(chat_id=group_id, photo=open(img, 'rb'), caption=f"Sklad - 1\n\nOdoo Natijasi:\n{transfer_res}", reply_to_message_id=msg_id)
         os.remove(img)
         
     if wh_2_items:
-        img = generate_receipt_image(f"{len(wh_2_items)} xil tovar", sum(float(i['qty']) for i in wh_2_items), "Sklad - 2", "O'rikzor")
-        await bot.send_photo(chat_id=group_id, photo=open(img, 'rb'), caption="Sklad - 2", reply_to_message_id=msg_id)
+        # Create Intercompany Transfer
+        items_for_transfer = [{'product_name': i.get('matched_name') or i.get('raw_name'), 'qty': i['qty']} for i in wh_2_items]
+        transfer_res = client.create_intercompany_transfer_bulk(source_warehouse_id=7, dest_company_id=dest_company_id, items=items_for_transfer)
+        
+        # Generate new receipt
+        img = generate_receipt_image(wh_2_items, "Sklad - 2", "O'rikzor")
+        await bot.send_photo(chat_id=group_id, photo=open(img, 'rb'), caption=f"Sklad - 2\n\nOdoo Natijasi:\n{transfer_res}", reply_to_message_id=msg_id)
         os.remove(img)
 
 async def handle_manual_product_name(update: Update, context: ContextTypes.DEFAULT_TYPE):

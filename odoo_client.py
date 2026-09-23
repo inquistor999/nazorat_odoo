@@ -855,10 +855,16 @@ class OdooClient:
                 'picking_type_to_id': picking_type_to_id,
                 'location_to_id': location_to_id,
                 'transit_location_id': 98,
+                'accounting_policy': 'balance_only',
+                'source_journal_id': 28,
+                'destination_journal_id': 27,
+                'source_liquidity_account_id': 612,
+                'destination_liquidity_account_id': 612,
                 'state': 'draft'
             }
+            ctx = {'allowed_company_ids': [3, dest_company_id]}
             transfer_id = self.models.execute_kw(self.db, self.uid, self.password,
-                'intercompany.transfer', 'create', [vals])
+                'intercompany.transfer', 'create', [vals], {'context': ctx})
                 
             added_lines = 0
             errors = []
@@ -881,18 +887,18 @@ class OdooClient:
                 }
                 
                 self.models.execute_kw(self.db, self.uid, self.password,
-                    'intercompany.transfer.line', 'create', [line_vals])
+                    'intercompany.transfer.line', 'create', [line_vals], {'context': ctx})
                 added_lines += 1
                 
             if added_lines == 0:
                 # Agar bitta ham tovar tushmasa o'chirib tashlaymiz
                 self.models.execute_kw(self.db, self.uid, self.password,
-                    'intercompany.transfer', 'unlink', [[transfer_id]])
+                    'intercompany.transfer', 'unlink', [[transfer_id]], {'context': ctx})
                 return f"Xato: Barcha tovarlar xato kiritilgan. {errors}"
             
             # Tasdiqlash
             self.models.execute_kw(self.db, self.uid, self.password,
-                'intercompany.transfer', 'action_confirm', [[transfer_id]])
+                'intercompany.transfer', 'action_confirm', [[transfer_id]], {'context': ctx})
             
             return f"✅ Intercompany Transfer yaratildi va Tasdiqlandi (Confirmed)! Hujjat ID: {transfer_id} ({added_lines} ta qator)"
         except Exception as e:

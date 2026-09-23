@@ -552,8 +552,7 @@ class OdooClient:
 
     def create_reservation(self, client_name: str, product_name: str, qty: float, pricelist_name: str = None) -> str:
         """
-        Mijoz uchun tovarni bron qiladi (Draft Sale Order orqali zaxira qilib bo'lmaydi, biz uni tasdiqlangan va yetkazib berishsiz holatda saqlaymiz yoki mijoz qarzlarini e'tiborga olmaymiz)
-        Bron qilish bu xuddi prodajaga o'xshaydi, lekin qarz cheklovsiz.
+        Mijoz uchun tovarni bron qiladi. Agar oxirgi 3 kunda ochilgan aktiv bron bo'lsa, o'shanga qator qilib qo'shadi.
         """
         try:
             qty_f = float(qty)
@@ -580,17 +579,38 @@ class OdooClient:
             if pr.get('virtual_available', 0) < qty_f:
                 return f"Xato: Omborda yetarli erkin qoldiq yo'q. Erkin qoldiq: {pr.get('virtual_available', 0)}"
                 
-            sale_vals = {'partner_id': p['id']}
-            if pricelist_name:
-                pricelist = self.models.execute_kw(self.db, self.uid, self.password,
-                    'product.pricelist', 'search_read',
-                    [[('name', 'ilike', pricelist_name)]],
-                    {'limit': 1, 'fields': ['id', 'name']})
-                if pricelist:
-                    sale_vals['pricelist_id'] = pricelist[0]['id']
+            # 1. Eski bronni qidiramiz (Oxirgi 3 kunda ochilgan, aynan shu user tomonidan, state='sale' yoki 'draft')
+            from datetime import datetime, timedelta
+            date_limit = (datetime.now() - timedelta(days=3)).strftime('%Y-%m-%d %H:%M:%S')
             
-            sale_id = self.models.execute_kw(self.db, self.uid, self.password,
-                'sale.order', 'create', [sale_vals])
+            domain = [
+                ('partner_id', '=', p['id']),
+                ('state', 'in', ['draft', 'sale']),
+                ('create_uid', '=', self.uid),
+                ('create_date', '>=', date_limit)
+            ]
+            existing_sales = self.models.execute_kw(self.db, self.uid, self.password,
+                'sale.order', 'search_read',
+                [domain],
+                {'limit': 1, 'order': 'id desc', 'fields': ['id', 'name', 'state']})
+            
+            sale_id = None
+            if existing_sales:
+                sale_id = existing_sales[0]['id']
+                sale_name = existing_sales[0]['name']
+            else:
+                sale_vals = {'partner_id': p['id']}
+                if pricelist_name:
+                    pricelist = self.models.execute_kw(self.db, self.uid, self.password,
+                        'product.pricelist', 'search_read',
+                        [[('name', 'ilike', pricelist_name)]],
+                        {'limit': 1, 'fields': ['id', 'name']})
+                    if pricelist:
+                        sale_vals['pricelist_id'] = pricelist[0]['id']
+                
+                sale_id = self.models.execute_kw(self.db, self.uid, self.password,
+                    'sale.order', 'create', [sale_vals])
+                sale_name = "Yangi yaratilgan hujjat"
                 
             self.models.execute_kw(self.db, self.uid, self.password,
                 'sale.order.line', 'create', [{
@@ -600,17 +620,19 @@ class OdooClient:
                     'price_unit': pr.get('lst_price', 0)
                 }])
                 
-            # Bron uchun confirm qilamiz, toki tovar free to use dan olib tashlansin
-            self.models.execute_kw(self.db, self.uid, self.password,
-                'sale.order', 'action_confirm', [[sale_id]])
+            # Agar hujjat hali tasdiqlanmagan bo'lsa yoki yangi bo'lsa, uni tasdiqlaymiz
+            if not existing_sales or existing_sales[0]['state'] == 'draft':
+                self.models.execute_kw(self.db, self.uid, self.password,
+                    'sale.order', 'action_confirm', [[sale_id]])
                 
-            sale = self.models.execute_kw(self.db, self.uid, self.password,
-                'sale.order', 'search_read',
-                [[('id', '=', sale_id)]],
-                {'limit': 1, 'fields': ['name']})
-            sale_name = sale[0]['name'] if sale else str(sale_id)
+            if not existing_sales:
+                sale = self.models.execute_kw(self.db, self.uid, self.password,
+                    'sale.order', 'search_read',
+                    [[('id', '=', sale_id)]],
+                    {'limit': 1, 'fields': ['name']})
+                sale_name = sale[0]['name'] if sale else str(sale_id)
                 
-            return f"🛡 Muvaffaqiyatli! {qty_f} ta {pr['name']} tovari {p['name']} uchun bron qilindi (Sotuv raqami: {sale_name})."
+            return f"✅ Muvaffaqiyatli! {qty_f} ta {pr['name']} tovari {p['name']} uchun bron qilindi (Sotuv raqami: {sale_name})."
         except Exception as e:
             return f"Odoo xatosi: {e}"
 

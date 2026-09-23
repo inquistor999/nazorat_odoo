@@ -312,12 +312,12 @@ async def handle_res_steal(update, context):
     success = client.steal_reservation(r['move_id'], r['sale_line_id'], steal_qty)
     
     if success:
-        await query.message.edit_text(f"✅ {r['manager']} ning {r['ref']} bronidan {steal_qty} yechib olindi!")
+        await query.message.edit_text(f"✅ {r['manager']} ning {r['ref']} bronidan {steal_qty} kg yechib olindi!")
     else:
         await query.message.edit_text(f"❌ Bron yechishda xato bo'ldi!")
         
-    # Indeksni keyingisiga suramiz va finalize_order ni davom ettiramiz
-    context.user_data['wizard_validation_idx'] += 1
+    # Biz indeksni oshirmaymiz! Chunki qisman yechilgan bo'lsa, xuddi shu tovarda hali ham 
+    # yetishmovchilik bo'lishi mumkin. Qayta tekshiruv (finalize_order) uni yana hisoblab chiqadi!
     context.user_data['wizard_res_idx'] = 0
     await finalize_order(context.bot, update.effective_chat.id, context)
     

@@ -25,9 +25,10 @@ async def process_next_order_in_queue(context: ContextTypes.DEFAULT_TYPE):
     import group_order_wizard
     
     try:
-        # User-larga xabar berish (agar kutgan bo'lsa)
-        user_id = update.effective_user.id
-        await context.bot.send_message(chat_id=user_id, text=f"📥 Navbatdagi zakaz ishlanmoqda... (Guruh ID: {chat_id}, SMS ID: {msg_id})")
+        import os
+        admin_chat_id = os.getenv('TELEGRAM_CHAT_ID')
+        if admin_chat_id:
+            await context.bot.send_message(chat_id=int(admin_chat_id), text=f"🚀 Navbatdagi zakaz ishlanmoqda... (Guruh ID: {chat_id}, SMS ID: {msg_id})")
         
         await group_order_wizard.start_group_order_wizard(update, context, order_data, msg_id, chat_id, order_text)
     except Exception as e:

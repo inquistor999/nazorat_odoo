@@ -50,14 +50,9 @@ async def process_user_buffer(user_id, chat_id, context, user_name):
         
         # Log logic
         if config.LOG_GROUP_ID:
-            user_msg = "\n".join(texts)
-".join(texts)
+            user_msg = "\\n".join(texts)
             if not user_msg: user_msg = "(Rasm yoki Ovozli xabar)"
-            log_text = f"👤 Foydalanuvchi: {user_name}
-🗣 So'radi: {user_msg}
-
-🤖 Bot javobi:
-{response}"
+            log_text = f"👤 Foydalanuvchi: {user_name}\\n🗣 So'radi: {user_msg}\\n\\n🤖 Bot javobi:\\n{response}"
             await context.bot.send_message(chat_id=int(config.LOG_GROUP_ID), text=log_text)
             
     except Exception as e:

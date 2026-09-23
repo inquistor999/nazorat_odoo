@@ -472,7 +472,7 @@ async def handle_wizard_confirm(update, context):
     
     img = generate_receipt_image(wh_items, wh_name, "O'rikzor")
     with open(img, 'rb') as f:
-        await context.bot.send_photo(chat_id=group_id, photo=f, caption=f"{wh_name}\n\nOdoo Natijasi:\n{transfer_res}", reply_to_message_id=msg_id)
+        await context.bot.send_photo(chat_id=group_id, photo=f, caption=f"{wh_name}", reply_to_message_id=msg_id)
     os.remove(img)
     
     await query.message.edit_caption(caption=f"✅ {wh_name} uchun tasdiqlandi va guruhga jo'natildi!\nOdoo: {transfer_res}")

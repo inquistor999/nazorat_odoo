@@ -390,17 +390,23 @@ async def handle_res_steal(update, context):
     client = OdooClient()
     
     steal_qty = min(shortage, r['qty'])
-    success = client.steal_reservation(r['move_id'], r['sale_line_id'], steal_qty)
+    
+    # 2-Bosqichli tekshiruv uchun yuklanish xabari
+    await query.message.edit_text(f"⏳ {r['manager']} ning {r['ref']} bronidan {steal_qty} kg yechilmoqda...\nQat'iy tekshiruv (2-step verification) o'tkazilmoqda!")
+    
+    # Non-blocking qilib chaqiramiz:
+    import asyncio
+    success = await asyncio.to_thread(client.steal_reservation, r['move_id'], r['sale_line_id'], steal_qty)
     
     if success:
-        await query.message.edit_text(f"✅ {r['manager']} ning {r['ref']} bronidan {steal_qty} kg yechib olindi!")
+        await query.message.edit_text(f"✅ MUVAFFAQIYATLI: {r['manager']} ning {r['ref']} bronidan {steal_qty} kg yechib olindi va Erkin Qoldiq ko'paydi!")
+        context.user_data['wizard_res_idx'] = 0
+        await finalize_order(context.bot, update.effective_chat.id, context)
     else:
-        await query.message.edit_text(f"❌ Bron yechishda xato bo'ldi!")
-        
-    # Biz indeksni oshirmaymiz! Chunki qisman yechilgan bo'lsa, xuddi shu tovarda hali ham 
-    # yetishmovchilik bo'lishi mumkin. Qayta tekshiruv (finalize_order) uni yana hisoblab chiqadi!
-    context.user_data['wizard_res_idx'] = 0
-    await finalize_order(context.bot, update.effective_chat.id, context)
+        await query.message.edit_text(f"❌ FOJIALI XATO!\nOdoo bazasida brondan tovar yechilmadi va erkin qoldiq ko'paymadi! Shuning uchun minusga kirmasligi uchun butun tranzaksiya to'xtatildi! Iltimos bazani tekshiring.")
+        import order_queue_manager
+        order_queue_manager.release_wizard(context)
+        return
     
 async def handle_res_next(update, context):
     query = update.callback_query

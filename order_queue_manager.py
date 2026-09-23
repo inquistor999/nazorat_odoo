@@ -52,7 +52,7 @@ async def add_order_to_queue(update, context, order_data, msg_id, chat_id, order
     q_len = len(context.bot_data['order_queue'])
     if context.bot_data.get('is_wizard_busy', False):
         user_id = update.effective_user.id
-        await context.bot.send_message(chat_id=user_id, text=f"⏳ Yangi zakaz navbatga qo'shildi. Oldindagi zakazlar soni: {q_len}. Iltimos oldingi zakazni tasdiqlang yoki bekor qiling...")
+        await context.bot.send_message(chat_id=int(os.getenv('TELEGRAM_CHAT_ID')), text=f"⏳ Yangi zakaz navbatga qo'shildi. Oldindagi zakazlar soni: {q_len}. Iltimos oldingi zakazni tasdiqlang yoki bekor qiling...")
         
     # Process
     await process_next_order_in_queue(context)

@@ -874,27 +874,59 @@ class OdooClient:
 
     def steal_reservation(self, move_id: int, sale_line_id: int, steal_qty: float):
         try:
+            # 1-BOSQICH: Tovar ma'lumotlari va joriy erkin qoldiqni (free_qty) o'lchash
+            move_info = self.models.execute_kw(self.db, self.uid, self.password,
+                'stock.move', 'search_read',
+                [[('id', '=', move_id)]], {'fields': ['product_id', 'location_id', 'product_uom_qty']})
+            
+            if not move_info:
+                return False
+                
+            product_id = move_info[0]['product_id'][0]
+            location_id = move_info[0]['location_id'][0]
+            old_qty = move_info[0]['product_uom_qty']
+            
+            def get_free_qty():
+                quants = self.models.execute_kw(self.db, self.uid, self.password,
+                    'stock.quant', 'search_read',
+                    [[('product_id', '=', product_id), ('location_id', '=', location_id)]],
+                    {'fields': ['quantity', 'reserved_quantity']})
+                if not quants: return 0.0
+                return sum([q['quantity'] - q['reserved_quantity'] for q in quants])
+                
+            free_before = get_free_qty()
+            
+            # 2-BOSQICH: Haqiqiy yechish (unreserve) amaliyotlari
+            new_qty = max(0, old_qty - steal_qty)
+            
+            # Agar sale_order_line ga tegishli bo'lsa, uning ham miqdorini tushiramiz
             if sale_line_id:
-                line = self.models.execute_kw(self.db, self.uid, self.password,
-                    'sale.order.line', 'search_read',
-                    [[('id', '=', sale_line_id)]], {'fields': ['product_uom_qty']})
-                if line:
-                    old_qty = line[0]['product_uom_qty']
-                    new_qty = max(0, old_qty - steal_qty)
-                    self.models.execute_kw(self.db, self.uid, self.password,
-                        'sale.order.line', 'write', [[sale_line_id], {'product_uom_qty': new_qty}])
+                self.models.execute_kw(self.db, self.uid, self.password,
+                    'sale.order.line', 'write', [[sale_line_id], {'product_uom_qty': new_qty}])
+                    
+            if new_qty <= 0:
+                self.models.execute_kw(self.db, self.uid, self.password, 'stock.move', '_do_unreserve', [[move_id]])
+                self.models.execute_kw(self.db, self.uid, self.password, 'stock.move', '_action_cancel', [[move_id]])
             else:
-                move = self.models.execute_kw(self.db, self.uid, self.password,
-                    'stock.move', 'search_read',
-                    [[('id', '=', move_id)]], {'fields': ['product_uom_qty']})
-                if move:
-                    old_qty = move[0]['product_uom_qty']
-                    new_qty = max(0, old_qty - steal_qty)
-                    self.models.execute_kw(self.db, self.uid, self.password,
-                        'stock.move', 'write', [[move_id], {'product_uom_qty': new_qty}])
-            return True
+                self.models.execute_kw(self.db, self.uid, self.password, 'stock.move', 'write', [[move_id], {'product_uom_qty': new_qty}])
+                try:
+                    self.models.execute_kw(self.db, self.uid, self.password, 'stock.move', '_do_unreserve', [[move_id]])
+                    self.models.execute_kw(self.db, self.uid, self.password, 'stock.move', '_action_assign', [[move_id]])
+                except Exception:
+                    pass
+                    
+            # 3-BOSQICH: Qat'iy Tasdiqlash (2-step verification)
+            free_after = get_free_qty()
+            expected_increase = old_qty - new_qty
+            
+            if free_after > free_before or expected_increase == 0:
+                return True
+            else:
+                return False
+
         except Exception as e:
-            print("Steal Error:", e)
+            import traceback
+            print("Steal Error:", traceback.format_exc())
             return False
 
     def create_intercompany_transfer_bulk(self, source_warehouse_id: int, dest_company_id: int, dest_warehouse_id: int, items: list) -> str:

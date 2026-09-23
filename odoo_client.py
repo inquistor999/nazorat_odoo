@@ -823,6 +823,78 @@ class OdooClient:
         except Exception as e:
             return f"Client Profile xatosi: {e}"
 
+    
+    def check_inventory_and_get_reservations(self, product_name: str, required_qty: float, warehouse_id: int):
+        product = self._find_product(product_name)
+        if not product:
+            return {'status': 'error', 'msg': f"'{product_name}' topilmadi."}
+            
+        location_id = self.get_warehouse_locations(warehouse_id)['lot_stock_id'][0]
+        
+        # Check free qty
+        stock_quants = self.models.execute_kw(self.db, self.uid, self.password,
+            'stock.quant', 'search_read',
+            [[('product_id', '=', product['id']), ('location_id', '=', location_id)]],
+            {'fields': ['quantity', 'reserved_quantity']})
+            
+        total_qty = sum(q['quantity'] for q in stock_quants)
+        total_res = sum(q['reserved_quantity'] for q in stock_quants)
+        free_qty = total_qty - total_res
+        
+        if free_qty >= required_qty:
+            return {'status': 'ok', 'free_qty': free_qty}
+            
+        # Shortage! Find reservations
+        moves = self.models.execute_kw(self.db, self.uid, self.password,
+            'stock.move', 'search_read',
+            [[('product_id', '=', product['id']), ('location_id', '=', location_id), ('state', 'in', ['assigned', 'partially_available'])]],
+            {'fields': ['id', 'product_uom_qty', 'sale_line_id', 'picking_id', 'create_uid']})
+            
+        reservations = []
+        for m in moves:
+            user_name = m['create_uid'][1] if m.get('create_uid') else 'Noma\'lum'
+            ref = m['picking_id'][1] if m.get('picking_id') else 'Noma\'lum Hujjat'
+            reservations.append({
+                'move_id': m['id'],
+                'sale_line_id': m.get('sale_line_id', [False])[0] if m.get('sale_line_id') else False,
+                'qty': m['product_uom_qty'],
+                'manager': user_name,
+                'ref': ref
+            })
+            
+        return {
+            'status': 'shortage',
+            'free_qty': free_qty,
+            'shortage': required_qty - free_qty,
+            'reservations': reservations,
+            'product_id': product['id']
+        }
+
+    def steal_reservation(self, move_id: int, sale_line_id: int, steal_qty: float):
+        try:
+            if sale_line_id:
+                line = self.models.execute_kw(self.db, self.uid, self.password,
+                    'sale.order.line', 'search_read',
+                    [[('id', '=', sale_line_id)]], {'fields': ['product_uom_qty']})
+                if line:
+                    old_qty = line[0]['product_uom_qty']
+                    new_qty = max(0, old_qty - steal_qty)
+                    self.models.execute_kw(self.db, self.uid, self.password,
+                        'sale.order.line', 'write', [[sale_line_id], {'product_uom_qty': new_qty}])
+            else:
+                move = self.models.execute_kw(self.db, self.uid, self.password,
+                    'stock.move', 'search_read',
+                    [[('id', '=', move_id)]], {'fields': ['product_uom_qty']})
+                if move:
+                    old_qty = move[0]['product_uom_qty']
+                    new_qty = max(0, old_qty - steal_qty)
+                    self.models.execute_kw(self.db, self.uid, self.password,
+                        'stock.move', 'write', [[move_id], {'product_uom_qty': new_qty}])
+            return True
+        except Exception as e:
+            print("Steal Error:", e)
+            return False
+
     def create_intercompany_transfer_bulk(self, source_warehouse_id: int, dest_company_id: int, dest_warehouse_id: int, items: list) -> str:
         """
         B2B dan boshqa kompaniyaga bitta hujjat ichida bir nechta tovar (line) yaratish.

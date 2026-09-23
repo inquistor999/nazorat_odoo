@@ -190,9 +190,88 @@ async def handle_mixed_warehouse(update: Update, context: ContextTypes.DEFAULT_T
 
 
 
+
 async def finalize_order(bot, chat_id, context):
     order = context.user_data['wizard_order']
     
+    # Validation bosqichi (Free stock tekshiruvi)
+    if 'wizard_validation_idx' not in context.user_data:
+        context.user_data['wizard_validation_idx'] = 0
+        
+    items = order['items']
+    idx = context.user_data['wizard_validation_idx']
+    
+    from odoo_client import OdooClient
+    client = OdooClient()
+    
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    
+    while idx < len(items):
+        item = items[idx]
+        wh_name = item.get('warehouse')
+        if not wh_name:
+            idx += 1
+            context.user_data['wizard_validation_idx'] = idx
+            continue
+            
+        wh_id = 4 if wh_name == 'Sklad - 1' else 7
+        p_name = item.get('matched_name') or item.get('raw_name')
+        req_qty = float(item['qty'])
+        
+        # Check stock and reservations
+        res = client.check_inventory_and_get_reservations(p_name, req_qty, wh_id)
+        if res['status'] == 'error':
+            await bot.send_message(chat_id=chat_id, text=f"❌ Xato: {res['msg']}")
+            idx += 1
+            context.user_data['wizard_validation_idx'] = idx
+            continue
+            
+        if res['status'] == 'shortage':
+            # Qisman qidiruv mantiqi!
+            if not res['reservations']:
+                await bot.send_message(chat_id=chat_id, text=f"⚠️ Diqqat! '{p_name}' qoldig'i faqat {res['free_qty']} kg bor. Boshqa hech kimda bron qilinmagan. Zakaz chala qolishi mumkin!")
+                idx += 1
+                context.user_data['wizard_validation_idx'] = idx
+                continue
+                
+            # Bizga qaysi indeksdagi rezerv kerakligi
+            res_idx = context.user_data.get('wizard_res_idx', 0)
+            
+            if res_idx >= len(res['reservations']):
+                await bot.send_message(chat_id=chat_id, text=f"Tugadi: '{p_name}' bo'yicha boshqa bron topilmadi.")
+                idx += 1
+                context.user_data['wizard_validation_idx'] = idx
+                context.user_data['wizard_res_idx'] = 0
+                continue
+                
+            r = res['reservations'][res_idx]
+            
+            # Xabarni yasash
+            text = f"📦 Tovar: <b>{p_name}</b>\n"
+            text += f"🏢 Ombor: {wh_name}\n"
+            text += f"✅ Erkin qoldiq: {res['free_qty']} kg\n"
+            text += f"❌ Yetishmovchilik: {res['shortage']} kg\n\n"
+            text += f"🔍 Qidiruv natijasi: Menejer <b>'{r['manager']}'</b> bronida (Hujjat: {r['ref']}) <b>{r['qty']}</b> bor.\n\n"
+            text += f"Shundan {res['shortage']} yechib olaylikmi?"
+            
+            keyboard = [
+                [InlineKeyboardButton(f"✅ Xa, chistichno yech ({res['shortage']} ni)", callback_data="res_steal")],
+                [InlineKeyboardButton("⏭ Yo'q, boshqa kimni bronida bor?", callback_data="res_next")],
+                [InlineKeyboardButton("🗑 Tovar otmen (Zakazdan ob tashla)", callback_data="res_cancel")]
+            ]
+            
+            # Save state for the callback
+            context.user_data['wizard_current_shortage'] = res['shortage']
+            context.user_data['wizard_current_res'] = r
+            
+            await bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
+            return # Wait for user to decide
+            
+        # Agar status 'ok' bo'lsa
+        idx += 1
+        context.user_data['wizard_validation_idx'] = idx
+        
+    # Validatsiyadan o'tdik! Chek yasash
     wh_1_items = [i for i in order['items'] if i.get('warehouse') == 'Sklad - 1']
     wh_2_items = [i for i in order['items'] if i.get('warehouse') == 'Sklad - 2']
     
@@ -218,6 +297,56 @@ async def finalize_order(bot, chat_id, context):
         with open(img2, 'rb') as f:
             await bot.send_photo(chat_id=chat_id, photo=f, caption="Sklad - 2 cheki. Tasdiqlaysizmi?", reply_markup=reply_markup)
         os.remove(img2)
+
+async def handle_res_steal(update, context):
+    query = update.callback_query
+    await query.answer()
+    
+    shortage = context.user_data['wizard_current_shortage']
+    r = context.user_data['wizard_current_res']
+    
+    from odoo_client import OdooClient
+    client = OdooClient()
+    
+    steal_qty = min(shortage, r['qty'])
+    success = client.steal_reservation(r['move_id'], r['sale_line_id'], steal_qty)
+    
+    if success:
+        await query.message.edit_text(f"✅ {r['manager']} ning {r['ref']} bronidan {steal_qty} yechib olindi!")
+    else:
+        await query.message.edit_text(f"❌ Bron yechishda xato bo'ldi!")
+        
+    # Indeksni keyingisiga suramiz va finalize_order ni davom ettiramiz
+    context.user_data['wizard_validation_idx'] += 1
+    context.user_data['wizard_res_idx'] = 0
+    await finalize_order(context.bot, update.effective_chat.id, context)
+    
+async def handle_res_next(update, context):
+    query = update.callback_query
+    await query.answer()
+    
+    context.user_data['wizard_res_idx'] = context.user_data.get('wizard_res_idx', 0) + 1
+    await query.message.delete()
+    await finalize_order(context.bot, update.effective_chat.id, context)
+    
+async def handle_res_cancel(update, context):
+    query = update.callback_query
+    await query.answer()
+    
+    idx = context.user_data['wizard_validation_idx']
+    order = context.user_data['wizard_order']
+    
+    item = order['items'][idx]
+    p_name = item.get('matched_name') or item.get('raw_name')
+    
+    # Zakazdan olib tashlaymiz
+    order['items'].pop(idx)
+    
+    await query.message.edit_text(f"🗑 {p_name} zakazdan olib tashlandi!")
+    
+    # Biz pop qilganimiz uchun idx ni oshirmaymiz (xuddi shu indeksda endi keyingi tovar turadi)
+    context.user_data['wizard_res_idx'] = 0
+    await finalize_order(context.bot, update.effective_chat.id, context)
 
 async def handle_wizard_confirm(update, context):
     query = update.callback_query
@@ -295,6 +424,9 @@ def get_wizard_handlers():
         CallbackQueryHandler(handle_product_variant, pattern="^prod_"),
         CallbackQueryHandler(handle_warehouse_mode, pattern="^(mode_|wh_single_)"),
         CallbackQueryHandler(handle_mixed_warehouse, pattern="^wh_mixed_"),
+        CallbackQueryHandler(handle_res_steal, pattern="^res_steal$"),
+        CallbackQueryHandler(handle_res_next, pattern="^res_next$"),
+        CallbackQueryHandler(handle_res_cancel, pattern="^res_cancel$"),
         CallbackQueryHandler(handle_wizard_confirm, pattern="^wizard_confirm$"),
         CallbackQueryHandler(handle_wizard_cancel, pattern="^wizard_cancel$")
     ]

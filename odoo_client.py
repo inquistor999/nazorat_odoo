@@ -829,7 +829,9 @@ class OdooClient:
         if not product:
             return {'status': 'error', 'msg': f"'{product_name}' topilmadi."}
             
-        location_id = self.get_warehouse_locations(warehouse_id)['lot_stock_id'][0]
+        warehouse = self.models.execute_kw(self.db, self.uid, self.password,
+            'stock.warehouse', 'read', [warehouse_id], {'fields': ['lot_stock_id']})[0]
+        location_id = warehouse['lot_stock_id'][0]
         
         # Check free qty
         stock_quants = self.models.execute_kw(self.db, self.uid, self.password,

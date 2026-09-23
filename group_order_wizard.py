@@ -191,10 +191,10 @@ async def handle_mixed_warehouse(update: Update, context: ContextTypes.DEFAULT_T
 
 
 
+
 async def finalize_order(bot, chat_id, context):
     order = context.user_data['wizard_order']
     
-    # Validation bosqichi (Free stock tekshiruvi)
     if 'wizard_validation_idx' not in context.user_data:
         context.user_data['wizard_validation_idx'] = 0
         
@@ -218,7 +218,6 @@ async def finalize_order(bot, chat_id, context):
         p_name = item.get('matched_name') or item.get('raw_name')
         req_qty = float(item['qty'])
         
-        # Check stock and reservations
         res = client.check_inventory_and_get_reservations(p_name, req_qty, wh_id)
         if res['status'] == 'error':
             await bot.send_message(chat_id=chat_id, text=f"❌ Xato: {res['msg']}")
@@ -227,14 +226,40 @@ async def finalize_order(bot, chat_id, context):
             continue
             
         if res['status'] == 'shortage':
-            # Qisman qidiruv mantiqi!
             if not res['reservations']:
-                await bot.send_message(chat_id=chat_id, text=f"⚠️ Diqqat! '{p_name}' qoldig'i faqat {res['free_qty']} kg bor. Boshqa hech kimda bron qilinmagan. Zakaz chala qolishi mumkin!")
-                idx += 1
-                context.user_data['wizard_validation_idx'] = idx
-                continue
+                # ZERO STOCK REPLACEMENT LOGIC
+                if res['free_qty'] == 0:
+                    text = f"⚠️ <b>{p_name}</b> omborda ({wh_name}) mutlaqo qolmagan (0 kg).\n\nBuning o'rniga qaysi muqobil tovarni qo'shamiz?"
+                    
+                    # Qidiruv
+                    offset = context.user_data.get('wizard_zero_search_offset', 0)
+                    raw_name = item.get('raw_name', p_name)
+                    
+                    search_res = client.search_products(raw_name, offset=offset)
+                    products = search_res.get('products', [])
+                    
+                    keyboard = []
+                    for p in products:
+                        short_name = p['name'][:40]
+                        # Tugma payloadida ID ni yuboramiz
+                        keyboard.append([InlineKeyboardButton(short_name, callback_data=f"rep_{p['id']}")])
+                    
+                    if search_res.get('has_more', False):
+                        keyboard.append([InlineKeyboardButton("➡️ Boshqa variantlar", callback_data="rep_next_page")])
+                        
+                    keyboard.append([InlineKeyboardButton("🗑 Tovarni otmen qilish", callback_data="rep_cancel")])
+                    
+                    context.user_data['wizard_current_replace_idx'] = idx
+                    context.user_data['wizard_current_replace_search'] = products
+                    
+                    await bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
+                    return # Kutamiz
+                else:
+                    await bot.send_message(chat_id=chat_id, text=f"⚠️ Diqqat! '{p_name}' qoldig'i faqat {res['free_qty']} kg bor. Boshqa hech kimda bron qilinmagan. Zakaz chala qolishi mumkin!")
+                    idx += 1
+                    context.user_data['wizard_validation_idx'] = idx
+                    continue
                 
-            # Bizga qaysi indeksdagi rezerv kerakligi
             res_idx = context.user_data.get('wizard_res_idx', 0)
             
             if res_idx >= len(res['reservations']):
@@ -246,7 +271,6 @@ async def finalize_order(bot, chat_id, context):
                 
             r = res['reservations'][res_idx]
             
-            # Xabarni yasash
             text = f"📦 Tovar: <b>{p_name}</b>\n"
             text += f"🏢 Ombor: {wh_name}\n"
             text += f"✅ Erkin qoldiq: {res['free_qty']} kg\n"
@@ -260,18 +284,15 @@ async def finalize_order(bot, chat_id, context):
                 [InlineKeyboardButton("🗑 Tovar otmen (Zakazdan ob tashla)", callback_data="res_cancel")]
             ]
             
-            # Save state for the callback
             context.user_data['wizard_current_shortage'] = res['shortage']
             context.user_data['wizard_current_res'] = r
             
             await bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
-            return # Wait for user to decide
+            return 
             
-        # Agar status 'ok' bo'lsa
         idx += 1
         context.user_data['wizard_validation_idx'] = idx
         
-    # Validatsiyadan o'tdik! Chek yasash
     wh_1_items = [i for i in order['items'] if i.get('warehouse') == 'Sklad - 1']
     wh_2_items = [i for i in order['items'] if i.get('warehouse') == 'Sklad - 2']
     
@@ -297,6 +318,54 @@ async def finalize_order(bot, chat_id, context):
         with open(img2, 'rb') as f:
             await bot.send_photo(chat_id=chat_id, photo=f, caption="Sklad - 2 cheki. Tasdiqlaysizmi?", reply_markup=reply_markup)
         os.remove(img2)
+
+async def handle_replace_product(update, context):
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "rep_next_page":
+        context.user_data['wizard_zero_search_offset'] = context.user_data.get('wizard_zero_search_offset', 0) + 4
+        await query.message.delete()
+        await finalize_order(context.bot, update.effective_chat.id, context)
+        return
+        
+    if query.data == "rep_cancel":
+        idx = context.user_data['wizard_current_replace_idx']
+        order = context.user_data['wizard_order']
+        item = order['items'][idx]
+        p_name = item.get('matched_name') or item.get('raw_name')
+        order['items'].pop(idx)
+        
+        await query.message.edit_text(f"🗑 {p_name} zakazdan olib tashlandi!")
+        
+        # Qayta tekshiruv
+        context.user_data['wizard_zero_search_offset'] = 0
+        await finalize_order(context.bot, update.effective_chat.id, context)
+        return
+        
+    # Tugma bosilganda (Product ID keladi)
+    p_id = int(query.data.replace("rep_", ""))
+    products = context.user_data.get('wizard_current_replace_search', [])
+    selected_name = None
+    for p in products:
+        if p['id'] == p_id:
+            selected_name = p['name']
+            break
+            
+    if not selected_name:
+        await query.message.edit_text("❌ Xatolik: Tovar topilmadi.")
+        return
+        
+    idx = context.user_data['wizard_current_replace_idx']
+    order = context.user_data['wizard_order']
+    
+    old_name = order['items'][idx].get('matched_name') or order['items'][idx].get('raw_name')
+    order['items'][idx]['matched_name'] = selected_name
+    
+    await query.message.edit_text(f"✅ {old_name} o'rniga <b>{selected_name}</b> qo'shildi!", parse_mode='HTML')
+    
+    context.user_data['wizard_zero_search_offset'] = 0
+    await finalize_order(context.bot, update.effective_chat.id, context)
 
 async def handle_res_steal(update, context):
     query = update.callback_query
@@ -427,6 +496,7 @@ def get_wizard_handlers():
         CallbackQueryHandler(handle_res_steal, pattern="^res_steal$"),
         CallbackQueryHandler(handle_res_next, pattern="^res_next$"),
         CallbackQueryHandler(handle_res_cancel, pattern="^res_cancel$"),
+        CallbackQueryHandler(handle_replace_product, pattern="^rep_"),
         CallbackQueryHandler(handle_wizard_confirm, pattern="^wizard_confirm$"),
         CallbackQueryHandler(handle_wizard_cancel, pattern="^wizard_cancel$")
     ]

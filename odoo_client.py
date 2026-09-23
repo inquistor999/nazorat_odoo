@@ -31,7 +31,35 @@ class OdooClient:
             model, method, [domain], {'fields': fields, **kwargs}
         )
 
+
+    def get_all_product_names_cached(self):
+        """Barcha tovarlarni bazadan (yoki cache'dan) olib beradi"""
+        import os, json, time
+        cache_file = "product_cache.json"
+        
+        if os.path.exists(cache_file):
+            if time.time() - os.path.getmtime(cache_file) < 12 * 3600: # 12 soat
+                try:
+                    with open(cache_file, 'r', encoding='utf-8') as f:
+                        return json.load(f)
+                except:
+                    pass
+                    
+        products = self.models.execute_kw(
+            self.db, self.uid, self.password,
+            'product.product', 'search_read',
+            [[('sale_ok', '=', True)]],
+            {'fields': ['name'], 'limit': 5000}
+        )
+        names = [p['name'] for p in products if p.get('name')]
+        
+        with open(cache_file, 'w', encoding='utf-8') as f:
+            json.dump(names, f, ensure_ascii=False)
+            
+        return names
+
     def _find_product(self, name):
+
         """Mahsulotni qidirish: 1) to'liq nom, 2) (JAMI) siz, 3) so'zlarga bo'lib aqlli qidiruv"""
         # 1-urinish: to'liq nom
         result = self._exec('product.product', 'search_read',

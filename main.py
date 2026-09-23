@@ -186,28 +186,42 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
             order_text = order_text[1:].strip()
             
         items = []
-        for line in order_text.split('\n'):
-            line = line.strip()
-            if not line:
-                continue
-                
-            # Son va (kg, litr, dona) ni ajratish uchun regex
-            match = re.search(r'(\d+(?:\.\d+)?)\s*(kg|litr|dona|L|g)', line, re.IGNORECASE)
-            if match:
-                qty = float(match.group(1))
-                raw_name = line.replace(match.group(0), "").strip()
-            else:
-                # Raqam topilmasa oxirgi so'zni son deb taxmin qilamiz
-                parts = line.split()
-                if parts and parts[-1].isdigit():
-                    qty = float(parts.pop())
-                    raw_name = " ".join(parts)
-                else:
-                    qty = 1.0
-                    raw_name = line
-                    
-            items.append({'raw_name': raw_name, 'qty': qty})
+        
+        # 1. Barcha tovarlar ro'yxatini olish
+        all_products = []
+        try:
+            from odoo_client import OdooClient
+            temp_client = OdooClient()
+            all_products = temp_client.get_all_product_names_cached()
+        except Exception as e:
+            logging.error(f"Tovar ro'yxatini olishda xato: {e}")
             
+        if all_products:
+            await update.message.reply_text("🤖 Super AI zakazni analiz qilmoqda... Iltimos kuting.")
+            from ai_agent import ai_assistant
+            parsed_items = await ai_assistant.parse_order_with_gemini(order_text, all_products)
+            if parsed_items:
+                items = parsed_items
+        
+        # Agar AI orqali topilmasa yoki AI ishlamasa, eski usulda parselaymiz
+        if not items:
+            for line in order_text.split('\\n'):
+                line = line.strip()
+                if not line: continue
+                match = re.search(r'(\\d+(?:\\.\\d+)?)\\s*(kg|litr|dona|L|g)', line, re.IGNORECASE)
+                if match:
+                    qty = float(match.group(1))
+                    raw_name = line.replace(match.group(0), "").strip()
+                else:
+                    parts = line.split()
+                    if parts and parts[-1].isdigit():
+                        qty = float(parts.pop())
+                        raw_name = " ".join(parts)
+                    else:
+                        qty = 1.0
+                        raw_name = line
+                items.append({'raw_name': raw_name, 'qty': qty})
+        
         if items:
             order_data = {'items': items}
             import order_queue_manager

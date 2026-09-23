@@ -197,7 +197,53 @@ class AIAssistant:
             return "Kechirasiz, men hozir ko'p funksiyalarni ishlatganim uchun API limit (kvota) tugadi. Iltimos 1 daqiqa kutib qayta urinib ko'ring."
         return await asyncio.to_thread(run_gemini)
 
+
+
+    async def parse_order_with_gemini(self, order_text: str, product_list: list) -> list:
+        """Mijoz zakazini AI orqali to'liq analiz qilib, bazadagi ro'yxat bilan eng to'g'ri bog'laydi"""
+        if not self.model: return []
+        
+        prompt = f"""Mijoz quyidagi zakazni yubordi:
+"{order_text}"
+
+Mana bizning Odoo bazamizdagi tovarlar ro'yxati (bu yerda 1200+ ta bo'lishi mumkin):
+{', '.join(product_list)}
+
+Vazifangiz:
+1. Zakaz matnidan har bir tovar nomini va miqdorini ajratib oling.
+2. Mijoz yozgan tovar nomini ("lesitin", "jele torto") bizning bazadagi ro'yxatdan eng mos keluvchisiga almashtiring.
+3. Javobni FAQAT JSON formatida qaytaring, hech qanday matn qo'shmang (```json larsiz). Format:
+[
+  {{"raw_name": "mijoz yozgan xato nom", "matched_name": "bazadagi to'g'ri nom", "qty": 20.0}}
+]
+"""
+        import asyncio
+        for attempt in range(2):
+            try:
+                def run_gemini():
+                    return self.model.generate_content(prompt).text
+                
+                response_text = await asyncio.to_thread(run_gemini)
+                
+                response_text = response_text.strip()
+                if response_text.startswith("```json"): response_text = response_text[7:]
+                if response_text.startswith("```"): response_text = response_text[3:]
+                if response_text.endswith("```"): response_text = response_text[:-3]
+                response_text = response_text.strip()
+                
+                import json
+                return json.loads(response_text)
+            except Exception as e:
+                import logging
+                logging.error(f"Gemini orqali parsingda xato (urinish {attempt+1}): {e}")
+                self.current_key_idx = (self.current_key_idx + 1) % len(self.api_keys)
+                self._setup_model()
+                await asyncio.sleep(1)
+        return []
+
     async def get_response(self, text: str, user_id: int, image_paths: list = None, voice_paths: list = None) -> str:
+
+
         # 1. Xotirani tekshiramiz
         if not image_paths and not voice_paths:
             mem_ans = self.find_in_memory(text)

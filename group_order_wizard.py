@@ -193,132 +193,144 @@ async def handle_mixed_warehouse(update: Update, context: ContextTypes.DEFAULT_T
 
 
 async def finalize_order(bot, chat_id, context):
-    order = context.user_data['wizard_order']
-    
-    if 'wizard_validation_idx' not in context.user_data:
-        context.user_data['wizard_validation_idx'] = 0
+    try:
+        order = context.user_data['wizard_order']
         
-    items = order['items']
-    idx = context.user_data['wizard_validation_idx']
-    
-    from odoo_client import OdooClient
-    client = OdooClient()
-    
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    
-    while idx < len(items):
-        item = items[idx]
-        wh_name = item.get('warehouse')
-        if not wh_name:
-            idx += 1
-            context.user_data['wizard_validation_idx'] = idx
-            continue
+        if 'wizard_validation_idx' not in context.user_data:
+            context.user_data['wizard_validation_idx'] = 0
             
-        wh_id = 4 if wh_name == 'Sklad - 1' else 7
-        p_name = item.get('matched_name') or item.get('raw_name')
-        req_qty = float(item['qty'])
+        items = order['items']
+        idx = context.user_data['wizard_validation_idx']
         
-        res = client.check_inventory_and_get_reservations(p_name, req_qty, wh_id)
-        if res['status'] == 'error':
-            await bot.send_message(chat_id=chat_id, text=f"❌ Xato: {res['msg']}")
-            idx += 1
-            context.user_data['wizard_validation_idx'] = idx
-            continue
-            
-        if res['status'] == 'shortage':
-            if not res['reservations']:
-                # ZERO STOCK REPLACEMENT LOGIC
-                if res['free_qty'] == 0:
-                    text = f"⚠️ <b>{p_name}</b> omborda ({wh_name}) mutlaqo qolmagan (0 kg).\n\nBuning o'rniga qaysi muqobil tovarni qo'shamiz?"
-                    
-                    # Qidiruv
-                    offset = context.user_data.get('wizard_zero_search_offset', 0)
-                    raw_name = item.get('raw_name', p_name)
-                    
-                    search_res = client.search_products(raw_name, offset=offset)
-                    products = search_res.get('products', [])
-                    
-                    keyboard = []
-                    for p in products:
-                        short_name = p['name'][:40]
-                        # Tugma payloadida ID ni yuboramiz
-                        keyboard.append([InlineKeyboardButton(short_name, callback_data=f"rep_{p['id']}")])
-                    
-                    if search_res.get('has_more', False):
-                        keyboard.append([InlineKeyboardButton("➡️ Boshqa variantlar", callback_data="rep_next_page")])
-                        
-                    keyboard.append([InlineKeyboardButton("🗑 Tovarni otmen qilish", callback_data="rep_cancel")])
-                    
-                    context.user_data['wizard_current_replace_idx'] = idx
-                    context.user_data['wizard_current_replace_search'] = products
-                    
-                    await bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
-                    return # Kutamiz
-                else:
-                    await bot.send_message(chat_id=chat_id, text=f"⚠️ Diqqat! '{p_name}' qoldig'i faqat {res['free_qty']} kg bor. Boshqa hech kimda bron qilinmagan. Zakaz chala qolishi mumkin!")
-                    idx += 1
-                    context.user_data['wizard_validation_idx'] = idx
-                    continue
-                
-            res_idx = context.user_data.get('wizard_res_idx', 0)
-            
-            if res_idx >= len(res['reservations']):
-                await bot.send_message(chat_id=chat_id, text=f"Tugadi: '{p_name}' bo'yicha boshqa bron topilmadi.")
+        from odoo_client import OdooClient
+        client = OdooClient()
+        
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        
+        # Qotib qolmasligi uchun xabar yuboramiz
+        if idx == 0:
+            await bot.send_message(chat_id=chat_id, text="⏳ Qoldiq va bronlar tekshirilmoqda, iltimos kuting...")
+        
+        while idx < len(items):
+            item = items[idx]
+            wh_name = item.get('warehouse')
+            if not wh_name:
                 idx += 1
                 context.user_data['wizard_validation_idx'] = idx
-                context.user_data['wizard_res_idx'] = 0
                 continue
                 
-            r = res['reservations'][res_idx]
+            wh_id = 4 if wh_name == 'Sklad - 1' else 7
+            p_name = item.get('matched_name') or item.get('raw_name')
+            req_qty = float(item['qty'])
             
-            text = f"📦 Tovar: <b>{p_name}</b>\n"
-            text += f"🏢 Ombor: {wh_name}\n"
-            text += f"✅ Erkin qoldiq: {res['free_qty']} kg\n"
-            text += f"❌ Yetishmovchilik: {res['shortage']} kg\n\n"
-            text += f"🔍 Qidiruv natijasi: Menejer <b>'{r['manager']}'</b> bronida (Hujjat: {r['ref']}) <b>{r['qty']}</b> bor.\n\n"
-            text += f"Shundan {res['shortage']} yechib olaylikmi?"
+            import asyncio
+            res = await asyncio.to_thread(client.check_inventory_and_get_reservations, p_name, req_qty, wh_id)
+            if res['status'] == 'error':
+                await bot.send_message(chat_id=chat_id, text=f"❌ Xato: {res['msg']}")
+                idx += 1
+                context.user_data['wizard_validation_idx'] = idx
+                continue
+                
+            if res['status'] == 'shortage':
+                if not res['reservations']:
+                    # ZERO STOCK REPLACEMENT LOGIC
+                    if res['free_qty'] == 0:
+                        text = f"⚠️ <b>{p_name}</b> omborda ({wh_name}) mutlaqo qolmagan (0 kg).\n\nBuning o'rniga qaysi muqobil tovarni qo'shamiz?"
+                        
+                        # Qidiruv
+                        offset = context.user_data.get('wizard_zero_search_offset', 0)
+                        raw_name = item.get('raw_name', p_name)
+                        
+                        import asyncio
+                        all_products = await asyncio.to_thread(client.search_products, raw_name, 50)
+                        products = all_products[offset:offset+4]
+                        has_more = len(all_products) > (offset + 4)
+                        
+                        keyboard = []
+                        for p in products:
+                            short_name = p['name'][:40]
+                            keyboard.append([InlineKeyboardButton(short_name, callback_data=f"rep_{p['id']}")])
+                        
+                        if has_more:
+                            keyboard.append([InlineKeyboardButton("➡️ Boshqa variantlar", callback_data="rep_next_page")])
+                            
+                        keyboard.append([InlineKeyboardButton("🗑 Tovarni otmen qilish", callback_data="rep_cancel")])
+                        
+                        context.user_data['wizard_current_replace_idx'] = idx
+                        context.user_data['wizard_current_replace_search'] = products
+                        
+                        await bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
+                        return # Kutamiz
+                    else:
+                        await bot.send_message(chat_id=chat_id, text=f"⚠️ Diqqat! '{p_name}' qoldig'i faqat {res['free_qty']} kg bor. Boshqa hech kimda bron qilinmagan. Zakaz chala qolishi mumkin!")
+                        idx += 1
+                        context.user_data['wizard_validation_idx'] = idx
+                        continue
+                    
+                res_idx = context.user_data.get('wizard_res_idx', 0)
+                
+                if res_idx >= len(res['reservations']):
+                    await bot.send_message(chat_id=chat_id, text=f"Tugadi: '{p_name}' bo'yicha boshqa bron topilmadi.")
+                    idx += 1
+                    context.user_data['wizard_validation_idx'] = idx
+                    context.user_data['wizard_res_idx'] = 0
+                    continue
+                    
+                r = res['reservations'][res_idx]
+                
+                text = f"📦 Tovar: <b>{p_name}</b>\n"
+                text += f"🏢 Ombor: {wh_name}\n"
+                text += f"✅ Erkin qoldiq: {res['free_qty']} kg\n"
+                text += f"❌ Yetishmovchilik: {res['shortage']} kg\n\n"
+                text += f"🔍 Qidiruv natijasi: Menejer <b>'{r['manager']}'</b> bronida (Hujjat: {r['ref']}) <b>{r['qty']}</b> bor.\n\n"
+                text += f"Shundan {res['shortage']} yechib olaylikmi?"
+                
+                keyboard = [
+                    [InlineKeyboardButton(f"✅ Xa, chistichno yech ({res['shortage']} ni)", callback_data="res_steal")],
+                    [InlineKeyboardButton("⏭ Yo'q, boshqa kimni bronida bor?", callback_data="res_next")],
+                    [InlineKeyboardButton("🗑 Tovar otmen (Zakazdan ob tashla)", callback_data="res_cancel")]
+                ]
+                
+                context.user_data['wizard_current_shortage'] = res['shortage']
+                context.user_data['wizard_current_res'] = r
+                
+                await bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
+                return 
+                
+            idx += 1
+            context.user_data['wizard_validation_idx'] = idx
             
-            keyboard = [
-                [InlineKeyboardButton(f"✅ Xa, chistichno yech ({res['shortage']} ni)", callback_data="res_steal")],
-                [InlineKeyboardButton("⏭ Yo'q, boshqa kimni bronida bor?", callback_data="res_next")],
-                [InlineKeyboardButton("🗑 Tovar otmen (Zakazdan ob tashla)", callback_data="res_cancel")]
-            ]
-            
-            context.user_data['wizard_current_shortage'] = res['shortage']
-            context.user_data['wizard_current_res'] = r
-            
-            await bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
-            return 
-            
-        idx += 1
-        context.user_data['wizard_validation_idx'] = idx
+        wh_1_items = [i for i in order['items'] if i.get('warehouse') == 'Sklad - 1']
+        wh_2_items = [i for i in order['items'] if i.get('warehouse') == 'Sklad - 2']
         
-    wh_1_items = [i for i in order['items'] if i.get('warehouse') == 'Sklad - 1']
-    wh_2_items = [i for i in order['items'] if i.get('warehouse') == 'Sklad - 2']
-    
-    from image_generator import generate_receipt_image
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    
-    keyboard = [
-        [InlineKeyboardButton("✅ Tasdiqlash (Xa)", callback_data="wizard_confirm")],
-        [InlineKeyboardButton("❌ Bekor qilish (Yo'q)", callback_data="wizard_cancel")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await bot.send_message(chat_id=chat_id, text="Tayyorlanayotgan chek rasmi (Preview):")
-    
-    if wh_1_items:
-        img1 = generate_receipt_image(wh_1_items, "Sklad - 1", "O'rikzor")
-        with open(img1, 'rb') as f:
-            await bot.send_photo(chat_id=chat_id, photo=f, caption="Sklad - 1 cheki. Tasdiqlaysizmi?", reply_markup=reply_markup)
-        os.remove(img1)
+        from image_generator import generate_receipt_image
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         
-    if wh_2_items:
-        img2 = generate_receipt_image(wh_2_items, "Sklad - 2", "O'rikzor")
-        with open(img2, 'rb') as f:
-            await bot.send_photo(chat_id=chat_id, photo=f, caption="Sklad - 2 cheki. Tasdiqlaysizmi?", reply_markup=reply_markup)
-        os.remove(img2)
-
+        keyboard = [
+            [InlineKeyboardButton("✅ Tasdiqlash (Xa)", callback_data="wizard_confirm")],
+            [InlineKeyboardButton("❌ Bekor qilish (Yo'q)", callback_data="wizard_cancel")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await bot.send_message(chat_id=chat_id, text="Tayyorlanayotgan chek rasmi (Preview):")
+        
+        if wh_1_items:
+            img1 = generate_receipt_image(wh_1_items, "Sklad - 1", "O'rikzor")
+            import os
+            with open(img1, 'rb') as f:
+                await bot.send_photo(chat_id=chat_id, photo=f, caption="Sklad - 1 cheki. Tasdiqlaysizmi?", reply_markup=reply_markup)
+            os.remove(img1)
+            
+        if wh_2_items:
+            img2 = generate_receipt_image(wh_2_items, "Sklad - 2", "O'rikzor")
+            import os
+            with open(img2, 'rb') as f:
+                await bot.send_photo(chat_id=chat_id, photo=f, caption="Sklad - 2 cheki. Tasdiqlaysizmi?", reply_markup=reply_markup)
+            os.remove(img2)
+    except Exception as e:
+        import traceback
+        err = traceback.format_exc()
+        await bot.send_message(chat_id=chat_id, text=f"❌ Kritik xato: {e}\n{err[:3000]}")
 async def handle_replace_product(update, context):
     query = update.callback_query
     await query.answer()

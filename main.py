@@ -210,9 +210,16 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
     text = text.strip()
     
     user_name = update.effective_user.first_name or "Foydalanuvchi"
+    
+    # Master password overrides block!
     if text == "login:umar3229":
+        remove_blocked_user(user_id)
         save_allowed_user(user_id, user_name)
-        await update.message.reply_text("✅ Tizimga kirdingiz! Endi botdan to'liq foydalanishingiz mumkin.")
+        await update.message.reply_text("🔓 Tizimga kirdingiz (va blokdan chiqdingiz)! Endi botdan to'liq foydalanishingiz mumkin.")
+        return ConversationHandler.END
+        
+    if is_user_blocked(user_id):
+        await update.message.reply_text("⛔ Siz bloklangansiz.")
         return ConversationHandler.END
         
     if text == "login:kimlar":

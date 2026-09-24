@@ -13,6 +13,13 @@ import asyncio
 user_message_buffers = {}
 user_timers = {}
 
+async def trigger_buffer_processing(context: ContextTypes.DEFAULT_TYPE):
+    job = context.job
+    user_id = job.data['user_id']
+    chat_id = job.data['chat_id']
+    user_name = job.data['user_name']
+    await process_user_buffer(user_id, chat_id, context, user_name)
+
 async def process_user_buffer(user_id, chat_id, context, user_name):
     buffer = user_message_buffers.pop(user_id, None)
     if not buffer:
@@ -58,6 +65,10 @@ async def process_user_buffer(user_id, chat_id, context, user_name):
     except Exception as e:
         import logging
         logging.error(f"Process buffer error: {e}")
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=f"⚠️ Serverda xatolik yuz berdi: {e}")
+        except:
+            pass
 
 from analysis import calculate_reorder_qty, create_sales_history_chart, extract_package_info
 from excel_exporter import generate_monthly_sales_excel, generate_reorder_excel
@@ -417,17 +428,20 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
             
         # Eski timerni bekor qilish
         if user_id in user_timers:
-            user_timers[user_id].cancel()
+            user_timers[user_id].schedule_removal()
             
-        # Yangi 5 soniyalik timer boshlash
-        loop = asyncio.get_event_loop()
-        task = loop.create_task(
-            asyncio.sleep(4)
-        )
-        task.add_done_callback(
-            lambda t: asyncio.create_task(process_user_buffer(user_id, update.message.chat_id, context, user_name)) if not t.cancelled() else None
-        )
-        user_timers[user_id] = task
+        # Yangi 4 soniyalik timer boshlash
+        if context.job_queue:
+            job = context.job_queue.run_once(
+                trigger_buffer_processing,
+                4,
+                data={'user_id': user_id, 'chat_id': update.message.chat_id, 'user_name': user_name}
+            )
+            user_timers[user_id] = job
+        else:
+            # Agar job_queue ishlamasa, darhol ishga tushiramiz
+            import asyncio
+            asyncio.create_task(process_user_buffer(user_id, update.message.chat_id, context, user_name))
                 
         return ConversationHandler.END
 

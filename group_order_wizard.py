@@ -99,7 +99,8 @@ async def process_next_product(bot, chat_id, context, edit_message_id=None):
             if not domain:
                 domain = [('name', 'ilike', item['raw_name'])]
             
-        products = client.models.execute_kw(client.db, client.uid, client.password, 
+        import asyncio
+        products = await asyncio.to_thread(client.models.execute_kw, client.db, client.uid, client.password, 
             'product.product', 'search_read', 
             [domain], 
             {'fields': ['id', 'name', 'qty_available'], 'limit': 20})
@@ -526,7 +527,8 @@ async def handle_wizard_confirm(update, context):
     dest_company_id = 2 # Urikzor company ID
     
     items_for_transfer = [{'product_name': i.get('matched_name') or i.get('raw_name'), 'qty': i['qty']} for i in wh_items]
-    transfer_res = client.create_intercompany_transfer_bulk(source_warehouse_id=source_wh, dest_company_id=dest_company_id, dest_warehouse_id=3, items=items_for_transfer)
+    import asyncio
+    transfer_res = await asyncio.to_thread(client.create_intercompany_transfer_bulk, source_wh, dest_company_id, 3, items_for_transfer)
     
     img = generate_receipt_image(wh_items, wh_name, "O'rikzor")
     with open(img, 'rb') as f:

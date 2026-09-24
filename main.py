@@ -184,8 +184,24 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text("Hech kim tizimga kirmagan.")
         else:
             msg = "🟢 Faol foydalanuvchilar:\n\n"
+            updated = False
             for uid, info in users.items():
-                msg += f"👤 {info.get('username', 'Foydalanuvchi')} | ID: {uid}\n"
+                name = info.get('username', 'Foydalanuvchi')
+                if name == "Foydalanuvchi" or name == "foydalanuvchi":
+                    try:
+                        chat = await context.bot.get_chat(int(uid))
+                        name = chat.first_name if chat.first_name else "Foydalanuvchi"
+                        users[uid]['username'] = name
+                        updated = True
+                    except Exception:
+                        pass
+                msg += f"👤 {name} | ID: {uid}\n"
+            
+            if updated:
+                import json
+                with open(ALLOWED_USERS_FILE, 'w', encoding='utf-8') as fw:
+                    json.dump(users, fw, ensure_ascii=False)
+                    
             await update.message.reply_text(msg)
         return ConversationHandler.END
         

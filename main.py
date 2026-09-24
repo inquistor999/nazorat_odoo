@@ -203,6 +203,11 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Miq etmasdan jim turadi (no reply)
         return ConversationHandler.END
         
+    # Dynamically update the username if it changed or is missing
+    users = load_allowed_users()
+    if str(user_id) in users and users[str(user_id)].get("username") != username:
+        save_allowed_user(user_id, username)
+        
     import group_order_wizard
     if await group_order_wizard.handle_manual_product_name(update, context):
         return ConversationHandler.END

@@ -653,15 +653,16 @@ class OdooClient:
         try:
             orders = self.models.execute_kw(self.db, self.uid, self.password,
                 'sale.order', 'search_read',
-                [[('name', '=', order_name)]],
-                {'limit': 1, 'fields': ['id', 'state', 'picking_ids']})
+                [[('name', 'ilike', order_name)]],
+                {'limit': 1, 'order': 'id desc', 'fields': ['id', 'state', 'name', 'picking_ids']})
             if not orders:
-                return f"Xato: '{order_name}' raqamli nakladnoy topilmadi."
+                return f"Xato: '{order_name}' bo'yicha hech qanday nakladnoy topilmadi."
             
             order_id = orders[0]['id']
+            real_name = orders[0]['name']
             state = orders[0]['state']
             if state == 'cancel':
-                return f"{order_name} allaqachon bekor qilingan."
+                return f"{real_name} allaqachon bekor qilingan."
                 
             # Check related pickings
             picking_ids = orders[0].get('picking_ids', [])
@@ -670,7 +671,7 @@ class OdooClient:
                     'stock.picking', 'read', [picking_ids], {'fields': ['id', 'state', 'name']})
                 for pick in pickings:
                     if pick['state'] == 'done':
-                        return f"❌ {order_name} ni bekor qilib bo'lmaydi! Unga ulangan dostavka ({pick['name']}) allaqachon bajarilgan (done)."
+                        return f"❌ {real_name} ni bekor qilib bo'lmaydi! Unga ulangan dostavka ({pick['name']}) allaqachon bajarilgan (done)."
                 
                 # Delete pickings (as requested by user: "nastroykaga oxshagan icon bosib undan keyin delete chiqadi")
                 for pick in pickings:
@@ -678,7 +679,7 @@ class OdooClient:
                         # Avval cancel qilamiz, keyin unlink
                         try:
                             self.models.execute_kw(self.db, self.uid, self.password, 'stock.picking', 'action_cancel', [[pick['id']]])
-                        except:
+                        except Exception as e:
                             pass
                         try:
                             self.models.execute_kw(self.db, self.uid, self.password, 'stock.picking', 'unlink', [[pick['id']]])
@@ -690,9 +691,16 @@ class OdooClient:
             try:
                 self.models.execute_kw(self.db, self.uid, self.password,
                     'sale.order', 'action_cancel', [[order_id]])
-            except:
-                pass
-            return f"✅ {order_name} nakladnoy muvaffaqiyatli bekor qilindi va tegishli dostavkalar o'chirildi."
+            except Exception as e:
+                return f"❌ {real_name} ni bekor qilishda xatolik yuz berdi: {str(e)}"
+                
+            # Verify it actually canceled
+            check_order = self.models.execute_kw(self.db, self.uid, self.password,
+                'sale.order', 'read', [order_id], {'fields': ['state']})
+            if check_order and check_order[0]['state'] != 'cancel':
+                return f"❌ {real_name} ni tizim bekor qilmadi. Dastavkasi qolib ketgan bo'lishi mumkin."
+                
+            return f"✅ {real_name} nakladnoy muvaffaqiyatli bekor qilindi va tegishli dostavkalar o'chirildi."
         except Exception as e:
             return f"Xato: {e}"
 

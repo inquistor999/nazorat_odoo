@@ -94,6 +94,11 @@ def save_allowed_user(user_id, username="Foydalanuvchi"):
 
 def kick_allowed_user(user_id):
     import json
+    import config
+    # SUPER ADMIN himoyasi
+    if str(user_id) == str(config.TELEGRAM_CHAT_ID):
+        return False
+        
     users = load_allowed_users()
     if str(user_id) in users:
         del users[str(user_id)]
@@ -119,6 +124,10 @@ def load_blocked_users():
 
 def save_blocked_user(user_id):
     import json
+    import config
+    if str(user_id) == str(config.TELEGRAM_CHAT_ID):
+        return
+        
     users = load_blocked_users()
     if str(user_id) not in users:
         users.append(str(user_id))
@@ -136,6 +145,9 @@ def remove_blocked_user(user_id):
     return False
 
 def is_user_blocked(user_id):
+    import config
+    if str(user_id) == str(config.TELEGRAM_CHAT_ID):
+        return False
     return str(user_id) in load_blocked_users()
 
 
@@ -261,28 +273,37 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text("❌ Tovarlarni yuklashda xatolik yuz berdi.")
         return ConversationHandler.END
 
-    if text.startswith("login:kick-"):
-        kick_id = text.replace("login:kick-", "").strip()
-        if kick_allowed_user(kick_id):
-            await update.message.reply_text(f"🛑 ID: {kick_id} foydalanuvchisi tizimdan uloqtirildi!")
-        else:
-            await update.message.reply_text(f"⚠️ ID: {kick_id} topilmadi.")
-        return ConversationHandler.END
+    if text.startswith("login:kick-") or text.startswith("login:block-") or text.startswith("login:unblock-"):
+        import config
+        if str(user_id) != str(config.TELEGRAM_CHAT_ID):
+            await update.message.reply_text("⛔ Bu buyruqni faqat Bosh Admin ishlata oladi!")
+            return ConversationHandler.END
 
-    if text.startswith("login:block-"):
-        block_id = text.replace("login:block-", "").strip()
-        save_blocked_user(block_id)
-        kick_allowed_user(block_id)
-        await update.message.reply_text(f"🚫 ID: {block_id} qora ro'yxatga kiritildi (bloklandi)!")
-        return ConversationHandler.END
-        
-    if text.startswith("login:unblock-"):
-        unblock_id = text.replace("login:unblock-", "").strip()
-        if remove_blocked_user(unblock_id):
-            await update.message.reply_text(f"✅ ID: {unblock_id} blokdan chiqarildi!")
-        else:
-            await update.message.reply_text(f"⚠️ ID: {unblock_id} qora ro'yxatda yo'q.")
-        return ConversationHandler.END
+        if text.startswith("login:kick-"):
+            kick_id = text.replace("login:kick-", "").strip()
+            if kick_allowed_user(kick_id):
+                await update.message.reply_text(f"🛑 ID: {kick_id} foydalanuvchisi tizimdan uloqtirildi!")
+            else:
+                await update.message.reply_text(f"⚠️ ID: {kick_id} topilmadi yoki bu Super Admin!")
+            return ConversationHandler.END
+
+        if text.startswith("login:block-"):
+            block_id = text.replace("login:block-", "").strip()
+            if str(block_id) == str(config.TELEGRAM_CHAT_ID):
+                await update.message.reply_text("❌ O'zingizni bloklay olmaysiz!")
+                return ConversationHandler.END
+            save_blocked_user(block_id)
+            kick_allowed_user(block_id)
+            await update.message.reply_text(f"🚫 ID: {block_id} qora ro'yxatga kiritildi (bloklandi)!")
+            return ConversationHandler.END
+            
+        if text.startswith("login:unblock-"):
+            unblock_id = text.replace("login:unblock-", "").strip()
+            if remove_blocked_user(unblock_id):
+                await update.message.reply_text(f"✅ ID: {unblock_id} blokdan chiqarildi!")
+            else:
+                await update.message.reply_text(f"⚠️ ID: {unblock_id} qora ro'yxatda yo'q.")
+            return ConversationHandler.END
 
     if not is_user_allowed(user_id):
         # Miq etmasdan jim turadi (no reply)

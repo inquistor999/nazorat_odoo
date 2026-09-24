@@ -105,6 +105,39 @@ def kick_allowed_user(user_id):
 def is_user_allowed(user_id):
     return str(user_id) in load_allowed_users()
 
+BLOCKED_USERS_FILE = 'blocked_users.json'
+
+def load_blocked_users():
+    import os, json
+    if os.path.exists(BLOCKED_USERS_FILE):
+        try:
+            with open(BLOCKED_USERS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+def save_blocked_user(user_id):
+    import json
+    users = load_blocked_users()
+    if str(user_id) not in users:
+        users.append(str(user_id))
+        with open(BLOCKED_USERS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(users, f, ensure_ascii=False)
+
+def remove_blocked_user(user_id):
+    import json
+    users = load_blocked_users()
+    if str(user_id) in users:
+        users.remove(str(user_id))
+        with open(BLOCKED_USERS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(users, f, ensure_ascii=False)
+        return True
+    return False
+
+def is_user_blocked(user_id):
+    return str(user_id) in load_blocked_users()
+
 
 async def cmd_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Guruh ID sini bilib olish uchun komanda"""
@@ -137,6 +170,10 @@ async def send_with_retry(send_func, retries=3, delay=3):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    if is_user_blocked(user_id):
+        if update.message:
+            await update.message.reply_text("⛔ Siz bloklangansiz.")
+        return ConversationHandler.END
     if not is_user_allowed(user_id):
         return ConversationHandler.END
 
@@ -211,6 +248,21 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text(f"🛑 ID: {kick_id} foydalanuvchisi tizimdan uloqtirildi!")
         else:
             await update.message.reply_text(f"⚠️ ID: {kick_id} topilmadi.")
+        return ConversationHandler.END
+
+    if text.startswith("login:block-"):
+        block_id = text.replace("login:block-", "").strip()
+        save_blocked_user(block_id)
+        kick_allowed_user(block_id)
+        await update.message.reply_text(f"🚫 ID: {block_id} qora ro'yxatga kiritildi (bloklandi)!")
+        return ConversationHandler.END
+        
+    if text.startswith("login:unblock-"):
+        unblock_id = text.replace("login:unblock-", "").strip()
+        if remove_blocked_user(unblock_id):
+            await update.message.reply_text(f"✅ ID: {unblock_id} blokdan chiqarildi!")
+        else:
+            await update.message.reply_text(f"⚠️ ID: {unblock_id} qora ro'yxatda yo'q.")
         return ConversationHandler.END
 
     if not is_user_allowed(user_id):

@@ -260,9 +260,8 @@ async def finalize_order(bot, chat_id, context):
         
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         
-        # Qotib qolmasligi uchun xabar yuboramiz
         if idx == 0:
-            await bot.send_message(chat_id=chat_id, text="⏳ Qoldiq va bronlar tekshirilmoqda, iltimos kuting...")
+            await bot.send_message(chat_id=chat_id, text="🔍 Qoldiq va bronlar tekshirilmoqda, iltimos kuting...")
         
         while idx < len(items):
             item = items[idx]
@@ -285,152 +284,54 @@ async def finalize_order(bot, chat_id, context):
                 continue
                 
             if res['status'] == 'shortage':
-                if not res['reservations']:
-                    # ZERO STOCK REPLACEMENT LOGIC
-                    if res['free_qty'] == 0:
-                        text = f"⚠️ <b>{p_name}</b> omborda ({wh_name}) mutlaqo qolmagan (0 kg).\n\nBuning o'rniga qaysi muqobil tovarni qo'shamiz?"
-                        
-                        # Qidiruv
-                        offset = context.user_data.get('wizard_zero_search_offset', 0)
-                        raw_name = item.get('raw_name', p_name)
-                        
-                        import asyncio
-                        all_products = await asyncio.to_thread(client.search_products, raw_name, 50)
-                        products = all_products[offset:offset+4]
-                        has_more = len(all_products) > (offset + 4)
-                        
-                        keyboard = []
-                        for p in products:
-                            short_name = p['name'][:40]
-                            keyboard.append([InlineKeyboardButton(short_name, callback_data=f"rep_{p['id']}")])
-                        
-                        if has_more:
-                            keyboard.append([InlineKeyboardButton("➡️ Boshqa variantlar", callback_data="rep_next_page")])
-                            
-                        keyboard.append([InlineKeyboardButton("🗑 Tovarni otmen qilish", callback_data="rep_cancel")])
-                        
-                        context.user_data['wizard_current_replace_idx'] = idx
-                        context.user_data['wizard_current_replace_search'] = products
-                        
-                        await bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
-                        return # Kutamiz
-                    else:
-                        await bot.send_message(chat_id=chat_id, text=f"⚠️ Diqqat! '{p_name}' qoldig'i faqat {res['free_qty']} kg bor. Boshqa hech kimda bron qilinmagan. Zakaz chala qolishi mumkin!")
-                        idx += 1
-                        context.user_data['wizard_validation_idx'] = idx
-                        continue
+                other_wh_name = 'Sklad - 1' if wh_name == 'Sklad - 2' else 'Sklad - 2'
+                other_free = res.get('other_wh_free_qty', 0)
+                free_qty = res['free_qty']
+                reservations = res.get('reservations', [])
+                
+                sum_res = sum(r['qty'] for r in reservations)
+                total_available = free_qty + sum_res
+                
+                context.user_data['wizard_current_reservations'] = reservations
+                context.user_data['wizard_current_req_qty'] = req_qty
+                context.user_data['wizard_current_free_qty'] = free_qty
+                
+                keyboard = []
+                msg = ""
+                
+                if total_available >= req_qty:
+                    msg = f"⚠️ <b>{p_name}</b> uchun <b>{wh_name}</b> da erkin qoldiq yetarli emas ({free_qty} kg). Lekin bronda {sum_res} kg bor. Bular qo'shilganda jami {total_available} kg yetadi.\n"
+                    if other_free >= req_qty:
+                        msg += f"✅ Lekin <b>{other_wh_name}</b> da umuman muammosiz erkin tovar bor ({other_free} kg)!\n"
+                        keyboard.append([InlineKeyboardButton(f"🔄 {other_wh_name} dan olish", callback_data="wh_change")])
                     
-                res_idx = context.user_data.get('wizard_res_idx', 0)
-                
-                if res_idx >= len(res['reservations']):
-                    await bot.send_message(chat_id=chat_id, text=f"Tugadi: '{p_name}' bo'yicha boshqa bron topilmadi.")
-                    idx += 1
-                    context.user_data['wizard_validation_idx'] = idx
-                    context.user_data['wizard_res_idx'] = 0
-                    continue
+                    keyboard.append([InlineKeyboardButton("🔓 Brondan yechish (ko'rish)", callback_data="res_steal")])
+                    keyboard.append([InlineKeyboardButton("✏️ Tovar Kg sini o'zgartirish", callback_data="qty_change")])
+                    keyboard.append([InlineKeyboardButton("❌ Tovarni ro'yxatdan o'chirish", callback_data="res_cancel")])
+                else:
+                    msg = f"🚨 <b>{p_name}</b> mutlaqo yetarli emas! <b>{wh_name}</b> da erkin qoldiq ({free_qty} kg) va barcha bronlarni qo'shganda ham atigi {total_available} kg chiqadi. Bizga esa {req_qty} kg kerak!\n"
+                    if other_free >= req_qty:
+                        msg += f"✅ Yaxshi xabar: <b>{other_wh_name}</b> da tovar yetarli ({other_free} kg)!\n"
+                        keyboard.append([InlineKeyboardButton(f"🔄 {other_wh_name} ga o'zgartirish", callback_data="wh_change")])
                     
-                r = res['reservations'][res_idx]
+                    keyboard.append([InlineKeyboardButton(f"✏️ Kg ni qisqartirish (Max: {total_available} kg)", callback_data="qty_change")])
+                    keyboard.append([InlineKeyboardButton("❌ Tovarni ro'yxatdan o'chirish", callback_data="res_cancel")])
                 
-                text = f"📦 Tovar: <b>{p_name}</b>\n"
-                text += f"🏢 Ombor: {wh_name}\n"
-                text += f"✅ Erkin qoldiq: {res['free_qty']} kg\n"
-                text += f"❌ Yetishmovchilik: {res['shortage']} kg\n\n"
-                text += f"🔍 Qidiruv natijasi: Menejer <b>'{r['manager']}'</b> bronida (Hujjat: {r['ref']}) <b>{r['qty']}</b> bor.\n\n"
-                text += f"Shundan {res['shortage']} yechib olaylikmi?"
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await bot.send_message(chat_id=chat_id, text=msg, reply_markup=reply_markup, parse_mode='HTML')
+                return # Kutib turamiz
                 
-                keyboard = [
-                    [InlineKeyboardButton(f"✅ Xa, chistichno yech ({res['shortage']} ni)", callback_data="res_steal")],
-                    [InlineKeyboardButton("⏭ Yo'q, boshqa kimni bronida bor?", callback_data="res_next")],
-                    [InlineKeyboardButton("🗑 Tovar otmen (Zakazdan ob tashla)", callback_data="res_cancel")]
-                ]
-                
-                context.user_data['wizard_current_shortage'] = res['shortage']
-                context.user_data['wizard_current_res'] = r
-                
-                await bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
-                return 
-                
+            # If ok
             idx += 1
             context.user_data['wizard_validation_idx'] = idx
-            
-        wh_1_items = [i for i in order['items'] if i.get('warehouse') == 'Sklad - 1']
-        wh_2_items = [i for i in order['items'] if i.get('warehouse') == 'Sklad - 2']
+
+        # Yaratishga o'tish
+        await create_order_in_odoo(bot, chat_id, context)
         
-        from image_generator import generate_receipt_image
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        
-        keyboard = [
-            [InlineKeyboardButton("✅ Tasdiqlash (Xa)", callback_data="wizard_confirm")],
-            [InlineKeyboardButton("❌ Bekor qilish (Yo'q)", callback_data="wizard_cancel")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await bot.send_message(chat_id=chat_id, text="Tayyorlanayotgan chek rasmi (Preview):")
-        
-        if wh_1_items:
-            img1 = generate_receipt_image(wh_1_items, "Sklad - 1", "O'rikzor")
-            import os
-            with open(img1, 'rb') as f:
-                await bot.send_photo(chat_id=chat_id, photo=f, caption="Sklad - 1 cheki. Tasdiqlaysizmi?", reply_markup=reply_markup)
-            os.remove(img1)
-            
-        if wh_2_items:
-            img2 = generate_receipt_image(wh_2_items, "Sklad - 2", "O'rikzor")
-            import os
-            with open(img2, 'rb') as f:
-                await bot.send_photo(chat_id=chat_id, photo=f, caption="Sklad - 2 cheki. Tasdiqlaysizmi?", reply_markup=reply_markup)
-            os.remove(img2)
     except Exception as e:
-        import traceback
-        err = traceback.format_exc()
-        await bot.send_message(chat_id=chat_id, text=f"❌ Kritik xato: {e}\n{err[:3000]}")
-async def handle_replace_product(update, context):
-    query = update.callback_query
-    await query.answer()
-    
-    if query.data == "rep_next_page":
-        context.user_data['wizard_zero_search_offset'] = context.user_data.get('wizard_zero_search_offset', 0) + 4
-        await query.message.delete()
-        await finalize_order(context.bot, update.effective_chat.id, context)
-        return
-        
-    if query.data == "rep_cancel":
-        idx = context.user_data['wizard_current_replace_idx']
-        order = context.user_data['wizard_order']
-        item = order['items'][idx]
-        p_name = item.get('matched_name') or item.get('raw_name')
-        order['items'].pop(idx)
-        
-        await query.message.edit_text(f"🗑 {p_name} zakazdan olib tashlandi!")
-        
-        # Qayta tekshiruv
-        context.user_data['wizard_zero_search_offset'] = 0
-        await finalize_order(context.bot, update.effective_chat.id, context)
-        return
-        
-    # Tugma bosilganda (Product ID keladi)
-    p_id = int(query.data.replace("rep_", ""))
-    products = context.user_data.get('wizard_current_replace_search', [])
-    selected_name = None
-    for p in products:
-        if p['id'] == p_id:
-            selected_name = p['name']
-            break
-            
-    if not selected_name:
-        await query.message.edit_text("❌ Xatolik: Tovar topilmadi.")
-        return
-        
-    idx = context.user_data['wizard_current_replace_idx']
-    order = context.user_data['wizard_order']
-    
-    old_name = order['items'][idx].get('matched_name') or order['items'][idx].get('raw_name')
-    order['items'][idx]['matched_name'] = selected_name
-    
-    await query.message.edit_text(f"✅ {old_name} o'rniga <b>{selected_name}</b> qo'shildi!", parse_mode='HTML')
-    
-    context.user_data['wizard_zero_search_offset'] = 0
-    await finalize_order(context.bot, update.effective_chat.id, context)
+        import logging
+        logging.error(f"finalize_order xato: {e}", exc_info=True)
+        await bot.send_message(chat_id=chat_id, text=f"Xatolik yuz berdi: {e}")
 
 async def handle_res_steal(update, context):
     query = update.callback_query
@@ -572,3 +473,45 @@ def get_wizard_handlers():
         CallbackQueryHandler(handle_wizard_confirm, pattern="^wizard_confirm$"),
         CallbackQueryHandler(handle_wizard_cancel, pattern="^wizard_cancel$")
     ]
+
+
+async def handle_wh_change(update, context):
+    query = update.callback_query
+    await query.answer()
+    
+    idx = context.user_data['wizard_validation_idx']
+    order = context.user_data['wizard_order']
+    item = order['items'][idx]
+    
+    old_wh = item['warehouse']
+    new_wh = 'Sklad - 1' if old_wh == 'Sklad - 2' else 'Sklad - 2'
+    item['warehouse'] = new_wh
+    
+    await query.message.edit_text(f"✅ Sklad muvaffaqiyatli <b>{new_wh}</b> ga o'zgartirildi! Qayta tekshirilmoqda...", parse_mode='HTML')
+    import asyncio
+    asyncio.create_task(finalize_order(context.bot, update.effective_chat.id, context))
+
+async def handle_qty_change(update, context):
+    query = update.callback_query
+    await query.answer()
+    idx = context.user_data['wizard_validation_idx']
+    context.user_data['wizard_awaiting_qty_change_idx'] = idx
+    await query.message.edit_text("✍️ Iltimos, ushbu tovar uchun yangi miqdorni (kg yoki dona) faqat raqamda yozib yuboring:")
+
+async def handle_qty_change_input(update, context):
+    idx = context.user_data.get('wizard_awaiting_qty_change_idx')
+    if idx is not None:
+        text = update.message.text.strip()
+        try:
+            new_qty = float(text)
+            order = context.user_data['wizard_order']
+            order['items'][idx]['qty'] = new_qty
+            del context.user_data['wizard_awaiting_qty_change_idx']
+            await update.message.reply_text(f"✅ Miqdor {new_qty} ga o'zgartirildi! Qayta tekshirilmoqda...")
+            import asyncio
+            asyncio.create_task(finalize_order(context.bot, update.effective_chat.id, context))
+            return True
+        except ValueError:
+            await update.message.reply_text("❌ Iltimos, miqdorni to'g'ri son ko'rinishida kiriting (masalan: 80 yoki 80.5)")
+            return True
+    return False

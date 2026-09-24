@@ -328,6 +328,9 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
     import group_order_wizard
     if await group_order_wizard.handle_manual_product_name(update, context):
         return ConversationHandler.END
+        
+    if await group_order_wizard.handle_qty_change_input(update, context):
+        return ConversationHandler.END
 
     # Foydalanuvchi xabari saqlanib turiladi va bot javobidan keyin bitta qilib yuboriladi
     user_msg_text = text if text else "rasm/fayl yubordi."

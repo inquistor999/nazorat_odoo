@@ -242,6 +242,18 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text(msg)
         return ConversationHandler.END
         
+    if text == "tovar-nomlari":
+        await update.message.reply_text("🔄 Odoo bazasidan tovarlar ro'yxati yangilanmoqda. Iltimos kuting...")
+        from odoo_client import OdooClient
+        client = OdooClient()
+        import asyncio
+        count = await asyncio.to_thread(client.sync_products)
+        if count > 0:
+            await update.message.reply_text(f"✅ Barcha tovarlar xotiraga yodlandi! Jami: {count} ta tovar saqlab qolindi. Endi xatolik bilan yozilsa ham topa olaman.")
+        else:
+            await update.message.reply_text("❌ Tovarlarni yuklashda xatolik yuz berdi.")
+        return ConversationHandler.END
+
     if text.startswith("login:kick-"):
         kick_id = text.replace("login:kick-", "").strip()
         if kick_allowed_user(kick_id):

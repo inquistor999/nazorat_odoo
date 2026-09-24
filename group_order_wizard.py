@@ -47,36 +47,88 @@ async def process_next_product(bot, chat_id, context, edit_message_id=None):
         
     item = order['items'][idx]
     from odoo_client import OdooClient
+    import os, json, difflib
     
     keyboard = []
     
     try:
         client = OdooClient()
-        words = item['raw_name'].split()
-        domain = []
-        for w in words:
-            if len(w) >= 3:
-                domain.append(('name', 'ilike', w))
+        matched_names = []
+        raw_name = item['raw_name'].lower()
+        
+        # 1. Load local DB for fuzzy matching
+        if os.path.exists('products_db.json'):
+            try:
+                with open('products_db.json', 'r', encoding='utf-8') as f:
+                    local_products = json.load(f)
+                    all_names = [p['name'] for p in local_products]
+                    
+                    # Fuzzy match
+                    matches = difflib.get_close_matches(raw_name, [n.lower() for n in all_names], n=10, cutoff=0.3)
+                    
+                    # Or try word intersection
+                    if not matches:
+                        raw_words = set(raw_name.split())
+                        scored = []
+                        for n in all_names:
+                            n_words = set(n.lower().split())
+                            score = len(raw_words.intersection(n_words))
+                            if score > 0:
+                                scored.append((score, n))
+                        scored.sort(reverse=True)
+                        matches = [n for s, n in scored[:10]]
+                        
+                    # Find original cased names
+                    for match in matches:
+                        for original in all_names:
+                            if original.lower() == match and original not in matched_names:
+                                matched_names.append(original)
+                                break
+            except Exception:
+                pass
                 
-        if not domain:
-            domain = [('name', 'ilike', item['raw_name'])]
+        # Fallback to ilike if fuzzy fails
+        domain = []
+        if matched_names:
+            domain = [('name', 'in', matched_names)]
+        else:
+            words = item['raw_name'].split()
+            for w in words:
+                if len(w) >= 3:
+                    domain.append(('name', 'ilike', w))
+            if not domain:
+                domain = [('name', 'ilike', item['raw_name'])]
             
         products = client.models.execute_kw(client.db, client.uid, client.password, 
             'product.product', 'search_read', 
             [domain], 
-            {'fields': ['id', 'name'], 'limit': 4, 'offset': offset})
+            {'fields': ['id', 'name', 'qty_available'], 'limit': 20})
             
         if products and isinstance(products, list):
-            for p in products:
-                name = p.get('name', 'Nomsiz')
-                display_name = name[:40] + '...' if len(name) > 40 else name
-                keyboard.append([InlineKeyboardButton(display_name, callback_data=f"prod_{name[:20]}")])
+            # FILTER: Skladda borlarni ajratib olamiz (qty_available > 0)
+            valid_products = [p for p in products if p.get('qty_available', 0) > 0]
             
-            if len(products) == 4:
-                keyboard.append([InlineKeyboardButton("🔄 Yana variantlar (Next)", callback_data="prod_next_page")])
+            # Agar hammasi 0 bo'lsa (yoki variant umuman topilmasa)
+            if not valid_products:
+                keyboard.append([InlineKeyboardButton("Variant topilmadi (Yoki Ostatka 0)", callback_data="prod_notfound")])
+            else:
+                # Slicing for pagination
+                paginated = valid_products[offset:offset+4]
+                for p in paginated:
+                    name = p.get('name', 'Nomsiz')
+                    display_name = name[:40] + '...' if len(name) > 40 else name
+                    keyboard.append([InlineKeyboardButton(display_name, callback_data=f"prod_{name[:20]}")])
+                
+                if offset + 4 < len(valid_products):
+                    keyboard.append([InlineKeyboardButton("➡️ Yana variantlar (Next)", callback_data="prod_next_page")])
+                elif offset > 0:
+                    keyboard.append([InlineKeyboardButton("Variant topilmadi", callback_data="prod_notfound")])
+                else:
+                    keyboard.append([InlineKeyboardButton("Variant topilmadi", callback_data="prod_notfound")])
         else:
             if offset == 0:
                 keyboard.append([InlineKeyboardButton("Variant topilmadi", callback_data="prod_notfound")])
+
     except Exception as e:
         keyboard.append([InlineKeyboardButton("Variant topilmadi (Xato)", callback_data="prod_error")])
         

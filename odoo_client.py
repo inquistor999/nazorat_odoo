@@ -648,6 +648,21 @@ class OdooClient:
         except Exception as e:
             return [{"error": str(e)}]
 
+    def sync_products(self):
+        try:
+            products = self.models.execute_kw(self.db, self.uid, self.password,
+                'product.product', 'search_read',
+                [[('sale_ok', '=', True)]],
+                {'fields': ['id', 'name']})
+            import json
+            with open('products_db.json', 'w', encoding='utf-8') as f:
+                json.dump(products, f, ensure_ascii=False)
+            return len(products)
+        except Exception as e:
+            import logging
+            logging.error(f"Error syncing products: {e}")
+            return -1
+
     def cancel_sale_order(self, order_name: str) -> str:
         """S-xxxx raqamli nakladnoyni ochirib yuborish (cancel)."""
         try:

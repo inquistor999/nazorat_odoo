@@ -61,10 +61,10 @@ async def process_next_product(bot, chat_id, context, edit_message_id=None):
             try:
                 with open('products_db.json', 'r', encoding='utf-8') as f:
                     local_products = json.load(f)
-                    all_names = [p['name'] for p in local_products]
+                    all_names = [str(p['name']) for p in local_products if p.get('name')]
                     
                     # Fuzzy match
-                    matches = difflib.get_close_matches(raw_name, [n.lower() for n in all_names], n=10, cutoff=0.3)
+                    matches = difflib.get_close_matches(raw_name, [n.lower() for n in all_names], n=15, cutoff=0.2)
                     
                     # Or try word intersection
                     if not matches:
@@ -76,7 +76,7 @@ async def process_next_product(bot, chat_id, context, edit_message_id=None):
                             if score > 0:
                                 scored.append((score, n))
                         scored.sort(reverse=True)
-                        matches = [n for s, n in scored[:10]]
+                        matches = [n for s, n in scored[:15]]
                         
                     # Find original cased names
                     for match in matches:

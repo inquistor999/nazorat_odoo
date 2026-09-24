@@ -652,7 +652,7 @@ class OdooClient:
         try:
             products = self.models.execute_kw(self.db, self.uid, self.password,
                 'product.product', 'search_read',
-                [[('sale_ok', '=', True)]],
+                [[]],
                 {'fields': ['id', 'name']})
             import json
             with open('products_db.json', 'w', encoding='utf-8') as f:

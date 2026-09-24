@@ -69,23 +69,41 @@ import json
 ALLOWED_USERS_FILE = 'allowed_users.json'
 
 def load_allowed_users():
+    import os, json
     if os.path.exists(ALLOWED_USERS_FILE):
         try:
-            with open(ALLOWED_USERS_FILE, 'r') as f:
-                return json.load(f)
+            with open(ALLOWED_USERS_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    # Migrate old list format to dict format
+                    new_data = {str(uid): {"username": "Foydalanuvchi"} for uid in data}
+                    with open(ALLOWED_USERS_FILE, 'w', encoding='utf-8') as fw:
+                        json.dump(new_data, fw, ensure_ascii=False)
+                    return new_data
+                return data
         except Exception:
-            return []
-    return []
+            return {}
+    return {}
 
-def save_allowed_user(user_id):
+def save_allowed_user(user_id, username="Foydalanuvchi"):
+    import json
     users = load_allowed_users()
-    if user_id not in users:
-        users.append(user_id)
-        with open(ALLOWED_USERS_FILE, 'w') as f:
-            json.dump(users, f)
+    users[str(user_id)] = {"username": username}
+    with open(ALLOWED_USERS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(users, f, ensure_ascii=False)
+
+def kick_allowed_user(user_id):
+    import json
+    users = load_allowed_users()
+    if str(user_id) in users:
+        del users[str(user_id)]
+        with open(ALLOWED_USERS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(users, f, ensure_ascii=False)
+        return True
+    return False
 
 def is_user_allowed(user_id):
-    return user_id in load_allowed_users()
+    return str(user_id) in load_allowed_users()
 
 
 async def cmd_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -154,16 +172,37 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
     text = update.message.text or update.message.caption or ""
     text = text.strip()
     
-    if text == "login:umar":
-        save_allowed_user(user_id)
+    user_name = update.effective_user.first_name or "Foydalanuvchi"
+    username = update.effective_user.username or user_name
+
+    if text == "login:umar3229":
+        save_allowed_user(user_id, username)
         await update.message.reply_text("✅ Tizimga kirdingiz! Endi botdan to'liq foydalanishingiz mumkin.")
         return ConversationHandler.END
         
-    if not is_user_allowed(user_id):
+    if text == "login:kimlar":
+        users = load_allowed_users()
+        if not users:
+            await update.message.reply_text("Hech kim tizimga kirmagan.")
+        else:
+            msg = "🟢 Faol foydalanuvchilar:\n\n"
+            for uid, info in users.items():
+                msg += f"👤 @{info.get('username', 'Foydalanuvchi')} | ID: {uid}\n"
+            await update.message.reply_text(msg)
         return ConversationHandler.END
         
-    user_name = update.effective_user.first_name or "Foydalanuvchi"
-    
+    if text.startswith("login:kick-"):
+        kick_id = text.replace("login:kick-", "").strip()
+        if kick_allowed_user(kick_id):
+            await update.message.reply_text(f"🛑 ID: {kick_id} foydalanuvchisi tizimdan uloqtirildi!")
+        else:
+            await update.message.reply_text(f"⚠️ ID: {kick_id} topilmadi.")
+        return ConversationHandler.END
+
+    if not is_user_allowed(user_id):
+        # Miq etmasdan jim turadi (no reply)
+        return ConversationHandler.END
+        
     import group_order_wizard
     if await group_order_wizard.handle_manual_product_name(update, context):
         return ConversationHandler.END

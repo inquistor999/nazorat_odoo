@@ -173,10 +173,8 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
     text = text.strip()
     
     user_name = update.effective_user.first_name or "Foydalanuvchi"
-    username = update.effective_user.username or user_name
-
     if text == "login:umar3229":
-        save_allowed_user(user_id, username)
+        save_allowed_user(user_id, user_name)
         await update.message.reply_text("✅ Tizimga kirdingiz! Endi botdan to'liq foydalanishingiz mumkin.")
         return ConversationHandler.END
         
@@ -187,7 +185,7 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             msg = "🟢 Faol foydalanuvchilar:\n\n"
             for uid, info in users.items():
-                msg += f"👤 @{info.get('username', 'Foydalanuvchi')} | ID: {uid}\n"
+                msg += f"👤 {info.get('username', 'Foydalanuvchi')} | ID: {uid}\n"
             await update.message.reply_text(msg)
         return ConversationHandler.END
         
@@ -205,8 +203,8 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
         
     # Dynamically update the username if it changed or is missing
     users = load_allowed_users()
-    if str(user_id) in users and users[str(user_id)].get("username") != username:
-        save_allowed_user(user_id, username)
+    if str(user_id) in users and users[str(user_id)].get("username") != user_name:
+        save_allowed_user(user_id, user_name)
         
     import group_order_wizard
     if await group_order_wizard.handle_manual_product_name(update, context):

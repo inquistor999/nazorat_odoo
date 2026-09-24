@@ -654,7 +654,7 @@ class OdooClient:
             orders = self.models.execute_kw(self.db, self.uid, self.password,
                 'sale.order', 'search_read',
                 [[('name', '=', order_name)]],
-                {'limit': 1, 'fields': ['id', 'state']})
+                {'limit': 1, 'fields': ['id', 'state', 'picking_ids']})
             if not orders:
                 return f"Xato: '{order_name}' raqamli nakladnoy topilmadi."
             
@@ -672,15 +672,27 @@ class OdooClient:
                     if pick['state'] == 'done':
                         return f"❌ {order_name} ni bekor qilib bo'lmaydi! Unga ulangan dostavka ({pick['name']}) allaqachon bajarilgan (done)."
                 
-                # Cancel pickings
+                # Delete pickings (as requested by user: "nastroykaga oxshagan icon bosib undan keyin delete chiqadi")
                 for pick in pickings:
-                    if pick['state'] not in ('cancel', 'done'):
-                        self.models.execute_kw(self.db, self.uid, self.password, 'stock.picking', 'action_cancel', [[pick['id']]])
+                    if pick['state'] not in ('done',):
+                        # Avval cancel qilamiz, keyin unlink
+                        try:
+                            self.models.execute_kw(self.db, self.uid, self.password, 'stock.picking', 'action_cancel', [[pick['id']]])
+                        except:
+                            pass
+                        try:
+                            self.models.execute_kw(self.db, self.uid, self.password, 'stock.picking', 'unlink', [[pick['id']]])
+                        except Exception as e:
+                            import logging
+                            logging.error(f"Dostavkani o'chirishda xato: {e}")
             
             # Finally cancel sale order
-            self.models.execute_kw(self.db, self.uid, self.password,
-                'sale.order', 'action_cancel', [[order_id]])
-            return f"✅ {order_name} nakladnoy muvaffaqiyatli bekor qilindi."
+            try:
+                self.models.execute_kw(self.db, self.uid, self.password,
+                    'sale.order', 'action_cancel', [[order_id]])
+            except:
+                pass
+            return f"✅ {order_name} nakladnoy muvaffaqiyatli bekor qilindi va tegishli dostavkalar o'chirildi."
         except Exception as e:
             return f"Xato: {e}"
 

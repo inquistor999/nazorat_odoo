@@ -419,7 +419,8 @@ def create_bron_tool(client_name: str, warehouse_name: str, reason_code: str, pr
         try:
             client.models.execute_kw(client.db, client.uid, client.password, 'bron.order', 'action_confirm_reserve', [[new_bron_id]])
         except Exception as e:
-            return f"Bron yaratildi, lekin tasdiqlashda xato yuz berdi (Sklad yetarli emas bo'lishi mumkin): {e}"
+            if "cannot marshal None" not in str(e):
+                return f"Bron yaratildi, lekin tasdiqlashda xato yuz berdi (Ostatkada yetarli emas bo'lishi mumkin): {e}"
 
         return f"✅ Muvaffaqiyatli! Bron yaratildi va TASDIQLANDI (ID: {new_bron_id}). Mijoz: {partner[0]['name']}, Ombor: {wh[0]['name']}, Tovar: {prod[0]['name']} ({qty} miqdorda, {price} narxda)."
 

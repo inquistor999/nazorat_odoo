@@ -469,7 +469,7 @@ def get_wizard_handlers():
         CallbackQueryHandler(handle_res_steal, pattern="^res_steal$"),
         CallbackQueryHandler(handle_res_next, pattern="^res_next$"),
         CallbackQueryHandler(handle_res_cancel, pattern="^res_cancel$"),
-        CallbackQueryHandler(handle_replace_product, pattern="^rep_"),
+        # CallbackQueryHandler(handle_replace_product, pattern="^rep_"),
         CallbackQueryHandler(handle_wizard_confirm, pattern="^wizard_confirm$"),
         CallbackQueryHandler(handle_wizard_cancel, pattern="^wizard_cancel$")
     ]

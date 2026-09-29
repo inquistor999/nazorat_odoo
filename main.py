@@ -33,7 +33,16 @@ async def process_user_buffer(user_id, chat_id, context, user_name):
     
     try:
         await context.bot.send_chat_action(chat_id=chat_id, action='typing')
-        response = await ai_assistant.get_response(combined_text, user_id, image_paths, voice_paths)
+        
+        # Get role and odoo_manager
+        users = load_allowed_users()
+        role = 'admin'
+        odoo_manager = None
+        if str(user_id) in users:
+            role = users[str(user_id)].get('role', 'admin')
+            odoo_manager = users[str(user_id)].get('odoo_manager')
+            
+        response = await ai_assistant.get_response(combined_text, user_id, image_paths, voice_paths, role, odoo_manager)
         
         # Cleanup
         for img in image_paths:
@@ -86,8 +95,7 @@ def load_allowed_users():
             with open(ALLOWED_USERS_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 if isinstance(data, list):
-                    # Migrate old list format to dict format
-                    new_data = {str(uid): {"username": "Foydalanuvchi"} for uid in data}
+                    new_data = {str(uid): {"username": "Foydalanuvchi", "role": "admin", "odoo_manager": None} for uid in data}
                     with open(ALLOWED_USERS_FILE, 'w', encoding='utf-8') as fw:
                         json.dump(new_data, fw, ensure_ascii=False)
                     return new_data
@@ -96,12 +104,29 @@ def load_allowed_users():
             return {}
     return {}
 
-def save_allowed_user(user_id, username="Foydalanuvchi"):
+def save_allowed_user(user_id, username="Foydalanuvchi", role="admin", odoo_manager=None):
     import json
     users = load_allowed_users()
-    users[str(user_id)] = {"username": username}
+    users[str(user_id)] = {"username": username, "role": role, "odoo_manager": odoo_manager}
     with open(ALLOWED_USERS_FILE, 'w', encoding='utf-8') as f:
         json.dump(users, f, ensure_ascii=False)
+        
+PASSWORDS_FILE = 'passwords.json'
+
+def load_passwords():
+    import os, json
+    if os.path.exists(PASSWORDS_FILE):
+        try:
+            with open(PASSWORDS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+    
+def save_passwords(passwords):
+    import json
+    with open(PASSWORDS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(passwords, f, ensure_ascii=False)
 
 def kick_allowed_user(user_id):
     import json
@@ -237,15 +262,29 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Master password overrides block!
     if text == "login:umar3229":
         remove_blocked_user(user_id)
-        save_allowed_user(user_id, user_name)
-        await update.message.reply_text("🔓 Tizimga kirdingiz (va blokdan chiqdingiz)! Endi botdan to'liq foydalanishingiz mumkin.")
+        save_allowed_user(user_id, user_name, "admin", None)
+        await update.message.reply_text(f"Salom {user_name}, siz super adminsiz. Tizimga kirdingiz!")
         return ConversationHandler.END
+        
+    if text.startswith("login:") and len(text.split(":")) == 2:
+        pwd = text.split(":")[1].strip()
+        passwords = load_passwords()
+        if pwd in passwords:
+            role = passwords[pwd].get('role', 'admin')
+            mgr = passwords[pwd].get('odoo_manager')
+            remove_blocked_user(user_id)
+            save_allowed_user(user_id, user_name, role, mgr)
+            if role == 'admin':
+                await update.message.reply_text(f"Salom {user_name}, siz super adminsiz. Tizimga kirdingiz!")
+            else:
+                await update.message.reply_text(f"Salom {mgr}. Tizimga kirdingiz.")
+            return ConversationHandler.END
         
     if is_user_blocked(user_id):
         await update.message.reply_text("⛔ Siz bloklangansiz.")
         return ConversationHandler.END
         
-    if text == "login:kimlar":
+    if text == "login:user" or text == "login:kimlar":
         users = load_allowed_users()
         if not users:
             await update.message.reply_text("Hech kim tizimga kirmagan.")
@@ -254,6 +293,8 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
             updated = False
             for uid, info in users.items():
                 name = info.get('username', 'Foydalanuvchi')
+                role = info.get('role', 'admin')
+                mgr = info.get('odoo_manager')
                 if name == "Foydalanuvchi" or name == "foydalanuvchi":
                     try:
                         chat = await context.bot.get_chat(int(uid))
@@ -262,7 +303,10 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
                         updated = True
                     except Exception:
                         pass
-                msg += f"👤 {name} | ID: {uid}\n"
+                if role == 'manager':
+                    msg += f"👤 {name} : {mgr}\n"
+                else:
+                    msg += f"👑 {name} : (Admin)\n"
             
             if updated:
                 import json
@@ -297,6 +341,65 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
             else:
                 await update.message.reply_text(f"⚠️ ID: {kick_id} topilmadi yoki bu Super Admin!")
             return ConversationHandler.END
+            
+        if text.startswith("kick:"):
+            # Format: kick:<telegram_name>:<odoo_manager>
+            parts = text.split(":")
+            if len(parts) >= 3:
+                tg_name = parts[1].strip().lower()
+                odoo_mgr = parts[2].strip().lower()
+                users = load_allowed_users()
+                kicked = False
+                for uid, info in users.items():
+                    name = info.get('username', '').lower()
+                    mgr = info.get('odoo_manager', '').lower() if info.get('odoo_manager') else ''
+                    if tg_name in name and odoo_mgr in mgr:
+                        kick_allowed_user(uid)
+                        kicked = True
+                        try:
+                            await context.bot.send_message(chat_id=int(uid), text="Tizimdan chiqdingiz. Qaytadan parol kiriting.")
+                        except Exception:
+                            pass
+                if kicked:
+                    await update.message.reply_text(f"🛑 {parts[1]} ({parts[2]}) tizimdan uloqtirildi!")
+                else:
+                    await update.message.reply_text(f"⚠️ Bunday foydalanuvchi topilmadi.")
+            return ConversationHandler.END
+            
+        if text.startswith("change:"):
+            # Format: change:<odoo_manager>:login:<new_password>
+            import re
+            match = re.match(r'change:(.+):login:(.+)', text)
+            if match:
+                odoo_mgr = match.group(1).strip()
+                new_pwd = match.group(2).strip()
+                
+                passwords = load_passwords()
+                # Find old pwd and remove it or just add new
+                old_pwd_to_remove = None
+                for pwd, info in passwords.items():
+                    if info.get('odoo_manager') == odoo_mgr:
+                        old_pwd_to_remove = pwd
+                        break
+                if old_pwd_to_remove:
+                    del passwords[old_pwd_to_remove]
+                passwords[new_pwd] = {"role": "manager", "odoo_manager": odoo_mgr}
+                save_passwords(passwords)
+                
+                # Kick all existing sessions of this manager
+                users = load_allowed_users()
+                for uid, info in users.items():
+                    if info.get('odoo_manager') == odoo_mgr:
+                        kick_allowed_user(uid)
+                        try:
+                            await context.bot.send_message(chat_id=int(uid), text="Parolingiz o'zgartirildi. Tizimdan chiqdingiz. Qaytadan yangi parolni kiriting.")
+                        except Exception:
+                            pass
+                            
+                await update.message.reply_text(f"✅ {odoo_mgr} uchun parol '{new_pwd}' ga o'zgartirildi va eski seanslar yopildi.")
+            else:
+                await update.message.reply_text("Noto'g'ri format. Format: change:Menejer Ismi:login:yangi_parol")
+            return ConversationHandler.END
 
         if text.startswith("login:block-"):
             block_id = text.replace("login:block-", "").strip()
@@ -323,7 +426,9 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Dynamically update the username if it changed or is missing
     users = load_allowed_users()
     if str(user_id) in users and users[str(user_id)].get("username") != user_name:
-        save_allowed_user(user_id, user_name)
+        role = users[str(user_id)].get("role", "admin")
+        mgr = users[str(user_id)].get("odoo_manager")
+        save_allowed_user(user_id, user_name, role, mgr)
         
     import group_order_wizard
     if await group_order_wizard.handle_manual_product_name(update, context):

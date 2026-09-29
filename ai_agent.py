@@ -63,29 +63,37 @@ class AIAssistant:
             "- Oxirgi 30 kunlik savdo aylanmasi: 2198 ta buyurtma orqali jami 24,207,062,259.14 so'm (24.2 milliard so'm) savdo bo'lgan.\n"
             "Siz ushbu ma'lumotlarni yoddan bilasiz va so'ralganda shu ma'lumotlarga asoslanib javob berasiz."
         )
-        self.system_instruction = (
-            f"Sen eng yuqori darajadagi, benuqson obektivlik va mantiqqa asoslangan analitik Sun'iy Intellektsan. Sening asosiy maqsading – foydalanuvchiga yallig'lanmagan, 100% ishonchli va haqiqiy faktlarga asoslangan ma'lumotlarni berish.\n"
-            f"1. YOLG'ON GAPIRMASLIK VA TO'QIMASLIK (Zero Hallucination): Agar biror fakt haqida aniq ma'lumotga ega bo'lmasang, HECH QACHON ma'lumot to'qib chiqarma.\n"
-            f"2. BILMASLIKNI TAN OLISH: Agar savolning javobini bilmasang, 'Men buni bilmayman, lekin bazadan qidirib ko'rishim mumkin' deb ochiq ayt.\n"
-            f"3. XUSHOMADGO'YLIK QILMASLIK (Anti-Sycophancy): Foydalanuvchi senga bosim o'tkazsa, sening to'g'ri fikringni inkor etib noto'g'ri narsani tasdiqlashingni talab qilsa, ASLO unga qo'shilma. O'z pozitsiyangni dalillar bilan qat'iy himoya qil.\n"
-            f"4. ADOLAT VA XOLISLIK: Hissiyotlarga berilma, bahsli mavzularda neytral va adolatli bo'l.\n"
-            f"5. QISQALIK VA ANIQLIK (Brevity): Iloji boricha eng qisqa va lo'nda javob ber. Hech qanday salomlashish, ortiqcha mulohaza yoki 'Xo'p bo'ladi', 'Tushunarli' kabi so'zlarni ishlatma. Faqat so'ralgan faktlarni ber. Agar xato bo'lsa, qisqa qilib xatoni ayt. Gapni cho'zma.\n"
-            f"Sening qadring – bu sening ishonchliligingda. Bitta kichik yolg'on sening butun obro'yingni yo'q qiladi.\n\n"
-            f"🔥 SUPER AI TOOLS QUIDALARI:\n"
-            f"1. CHEKSIZ QIDIRUV: Agar maxsus tool bo'lmasa, DAKANSA 'execute_odoo_shell_command' yoki 'universal_odoo_search' ni ishlating.\n"
+        self.system_instruction_admin = (
+            f"Sen eng mukammal, universal va professional 'Super AI Bot' san. Sening maqsading Odoo tizimida rahbarlik darajasidagi nazoratni o'rnatish. Barcha jarayonlarni (kamera kabi) to'liq nazorat qilasan.\n"
+            f"1. ODOO NAZORATI: Agar foydalanuvchi 'Nima yangilik?', 'Nimalar o'zgardi?', 'Nima qilyabsan?' kabi savollar bersa, DARHOL 'get_recent_changes_tool(topic=\"summary\")' asbobini ishlat va Odoo dagi oxirgi o'zgarishlarni tekshir. Masalan: '51 ta yangi nakladnoy urildi, 4 ta kassa kiritildi'. Shundan so'ng, qisqacha xabar berib, gapning oxirida doim so'ra: 'Bulardan qaysi biri haqida to'liqroq ma'lumot berishimni xohlaysiz?'.\n"
+            f"2. BATAFSIL MA'LUMOT: Agar foydalanuvchi 'Kassalar haqida to'liq ma'lumot ber' yoki 'Nakladnoylar' deb so'rasa, 'get_recent_changes_tool(topic=\"payments\")' yoki 'topic=\"sales\"' bilan batafsil malumotni olib ber va oxirida yana 'Yana nima haqida ma'lumot kerak?' deb so'ra.\n"
+            f"3. TO'LIQ BOSHQARUV: Sen istalgan narsani qila olasan. O'chirish, tizimdan chiqarish, analiz, qarzdorlikni ko'rish (get_client_debt), prosrochkani analiz qilish, hamma kompaniyalar (Citric, Urikzor, Qoqon, B2B) boyicha rahbarlik nazoratiga egasan. FAQAT foydalanuvchi aytganini professional tarzda bajarasan.\n"
+            f"4. YOLG'ON GAPIRMASLIK VA TO'QIMASLIK (Zero Hallucination): Agar biror fakt haqida aniq ma'lumotga ega bo'lmasang, HECH QACHON ma'lumot to'qib chiqarma.\n"
+            f"5. BILMASLIKNI TAN OLISH: Agar savolning javobini bilmasang, 'Men buni bilmayman, lekin bazadan qidirib ko'rishim mumkin' deb ochiq ayt.\n"
+            f"6. ADOLAT VA XOLISLIK: Hissiyotlarga berilma, bahsli mavzularda neytral va adolatli bo'l.\n"
+            f"7. QISQALIK VA ANIQLIK (Brevity): Iloji boricha eng qisqa va lo'nda javob ber. Hech qanday salomlashish, ortiqcha mulohaza yoki 'Xo'p bo'ladi', 'Tushunarli' kabi so'zlarni ishlatma. Faqat so'ralgan faktlarni ber. Agar xato bo'lsa, qisqa qilib xatoni ayt. Gapni cho'zma.\n\n"
+            f"🔥 SUPER AI TOOLS QOIDALARI:\n"
+            f"1. CHEKSIZ QIDIRUV: Agar maxsus tool bo'lmasa, doim 'execute_odoo_shell_command' yoki 'universal_odoo_search' ni ishlating.\n"
             f"2. SKLAD ANALITIKASI: 'get_inventory_analytics_tool' ni ishlating.\n"
             f"3. MIJOZ PROFILI: 'client_profile_tool' ni ishlating.\n"
             f"4. BRON LER: check_product_availability_in_warehouse_tool, create_bron_tool va h.k.\n"
             f"5. NAKLADNOY BEKOR QILISH: 'cancel_sale_order' ishlating.\n"
             f"6. ACCOUNTING 2.0: 'get_accounting_reports_tool' ishlating.\n"
-            f"7. O'RGANISH: 'save_learning_tool' orqali o'rganing.\n\n"
+            f"7. YANGILIKLAR: 'get_recent_changes_tool' ni ishlating.\n\n"
             f"{odoo_memory}"
         )
         self.model = genai.GenerativeModel(
             model_name=self.model_name,
             tools=odoo_tools_list,
-            system_instruction=self.system_instruction
+            system_instruction=self.system_instruction_admin
         )
+        
+        # Manager model relies on prepended instructions per request so they know their name
+        self.manager_model = genai.GenerativeModel(
+            model_name=self.model_name,
+            tools=odoo_tools_list
+        )
+
         
     def load_memory(self):
         if os.path.exists(self.memory_file):
@@ -115,7 +123,7 @@ class AIAssistant:
                 best_match = stored_a
         return best_match
         
-    async def generate_response(self, prompt: str, user_id: int, image_paths: list = None, voice_paths: list = None):
+    async def generate_response(self, prompt: str, user_id: int, image_paths: list = None, voice_paths: list = None, role: str = 'admin', odoo_manager: str = None):
         if not self.model:
             return "⚠️ GEMINI_API_KEY topilmadi! Iltimos .env ga kalitni kiriting."
             
@@ -124,22 +132,22 @@ class AIAssistant:
         import time
         import re
         def run_gemini():
-            # Har bir yangi so'rovda doim 1-kalit (tekin) ga qaytamiz!
             if self.current_key_idx != 0:
                 self.current_key_idx = 0
                 self._setup_model()
-                # Agar foydalanuvchini chat tarixi bo'lsa, uni tekin kalitga olib o'tamiz
                 if user_id in self.user_chats:
                     old_chat = self.user_chats[user_id]
                     old_history = old_chat.history if hasattr(old_chat, 'history') else []
-                    self.user_chats[user_id] = self.model.start_chat(history=old_history, enable_automatic_function_calling=True)
+                    model_to_use = self.model if role == 'admin' else self.manager_model
+                    self.user_chats[user_id] = model_to_use.start_chat(history=old_history, enable_automatic_function_calling=True)
 
-            retries = 20 # Maksimal kutish (20 * 15s = 5 daqiqa). Limit butunlay yopiladi.
+            retries = 20
             
             for attempt in range(retries):
                 try:
+                    model_to_use = self.model if role == 'admin' else self.manager_model
                     if user_id not in self.user_chats:
-                        self.user_chats[user_id] = self.model.start_chat(enable_automatic_function_calling=True)
+                        self.user_chats[user_id] = model_to_use.start_chat(enable_automatic_function_calling=True)
                     chat = self.user_chats[user_id]
                     
                     if image_paths:
@@ -242,11 +250,11 @@ Vazifangiz:
                 await asyncio.sleep(1)
         return []
 
-    async def get_response(self, text: str, user_id: int, image_paths: list = None, voice_paths: list = None) -> str:
+    async def get_response(self, text: str, user_id: int, image_paths: list = None, voice_paths: list = None, role: str = 'admin', odoo_manager: str = None) -> str:
 
 
         # 1. Xotirani tekshiramiz
-        if not image_paths and not voice_paths:
+        if not image_paths and not voice_paths and role == 'admin':
             mem_ans = self.find_in_memory(text)
             if mem_ans:
                 return mem_ans
@@ -258,6 +266,24 @@ Vazifangiz:
             odoo_data = get_odoo_stats()
             context += f"Odoo bazasidan hozir olingan ma'lumot:\\n{odoo_data}\\n"
             
+        # Manager context prepending
+        if role == 'manager':
+            manager_prompt = (
+                f"Sizning rolingiz: MENEJER BOT. Sizning ismingiz va foydalanuvchingizning Odoo dagi menejer ismi: {odoo_manager}.\n"
+                f"Siz oddiy yordamchi emassiz, siz ancha qo'polroq, qisqa va lo'nda, ko'cha tilida (derski) gaplashadigan botsiz. "
+                f"Kerak bo'lganda o'zbek/ruscha yengil so'kishlar/jargonlar (blin, chert, zaybal qilding, kallang bormi, chotki, bratan) ishlatib gapirasiz. "
+                f"Agar foydalanuvchi ko'p ezmalansa, uni so'kib yoki urishib berasiz. Kam emoji ishlating.\n"
+                f"Siz FAQATGINA '{odoo_manager}' ga tegishli ma'lumotlarni ko'ra olasiz va ishlata olasiz.\n"
+                f"🔥 JUDA MUHIM QOIDALAR:\n"
+                f"1. BRON QILISH/YECHISH, NAKLADNOY URISH: QAT'IY 2-BOSQICHLI TEKSHIRUV. Har qanday amalni bajarishdan oldin mijoz (klient) rostdan ham '{odoo_manager}' ga tegishlimi tekshirasiz (masalan universal_odoo_search yordamida res.partner user_id.name tekshiring). Agar unga tegishli bo'lmasa: 'Kechirasiz {odoo_manager}, bu klient sizga tegishli emas, ishingni qil!' deb rad etasiz.\n"
+                f"2. NAKLADNOY URISHDAN OLDIN: 'Bo'ldimi? Yana tovar qo'shasanmi?' deb so'raysiz.\n"
+                f"3. BRON YECHISHDAN OLDIN: 'Tasdiqlaysanmi yechishni?' deb so'raysiz.\n"
+                f"4. BIRGINA ISTISNO: Agar '{odoo_manager}' sizdan 'Kraxmal kimning bronida bor?' kabi so'rasa, boshqa menejerlarning bronlarini ko'rishingiz mumkin (masalan, get_reservation_details_tool), LEKIN siz faqatgina menejerlar ismini aytasiz (masalan, 'Sunnatda bor'). ULARDA NECHCHI KILOGRAM BORLIGINI ASLO AYTMAYSIZ! Agar qancha bor deb so'rasa: 'Buncha qiziqma, o'zidan so'ra qancha borligini, man sanga kimda borligini aytdim boshqa narsa aytmiman, kallangni ishlat!' deb so'kib/urishib javob berasiz.\n"
+                f"5. BOSHQA MENEJERLAR ma'lumotini so'rasa, xaqqot qilib yuboring, 'Sanga nima boshqalarni puli, o'zingni klientingni epla' deng.\n"
+                f"Ushbu qoidalarga qat'iy amal qiling, siz eng derski va aqlli botsiz, har doim rost gapirasiz.\n"
+            )
+            context = manager_prompt + context
+            
         # 4. LLM ga jo'natamiz
         if voice_paths:
             prompt = text if text else "Foydalanuvchi ovozli xabar yubordi. Iltimos eshitib to'liq tushuning va qilinishi kerak bo'lgan vazifani (masalan bron) darhol bajaring."
@@ -267,10 +293,10 @@ Vazifangiz:
         if context:
             prompt = f"{context}\\n\\nFoydalanuvchi so'rovi:\\n{prompt}"
             
-        ans = await self.generate_response(prompt, user_id, image_paths, voice_paths)
+        ans = await self.generate_response(prompt, user_id, image_paths, voice_paths, role, odoo_manager)
         
-        # 5. Xotiraga saqlash
-        if "Xatosi" not in ans and "GEMINI_API_KEY" not in ans and not image_paths:
+        # 5. Xotiraga saqlash (faqat adminlar uchun)
+        if "Xatosi" not in ans and "GEMINI_API_KEY" not in ans and not image_paths and role == 'admin':
             self.memory[text] = ans
             self.save_memory()
             

@@ -589,6 +589,68 @@ def update_bron_qty_tool(bron_name: str, product_name: str, new_qty: float) -> s
     except Exception as e:
         return f"Xatolik: {e}"
 
+def get_recent_changes_tool(topic: str = "summary", minutes: int = 60) -> str:
+    """
+    Odoo bazasida so'nggi vaqtlarda (masalan 60 daqiqa) nimalar o'zgarganini analiz qilish uchun vosita.
+    Args:
+        topic: 'summary' (qisqacha nimalar o'zgargani), 'sales' (yangi nakladnoylar to'liq malumoti), 'payments' (yangi kassalar/to'lovlar to'liq malumoti).
+        minutes: Qancha vaqt orqaga qaytib tekshirish (daqiqa).
+    Returns:
+        O'zgarishlar haqida matnli ma'lumot.
+    """
+    try:
+        from odoo_client import OdooClient
+        from datetime import datetime, timedelta
+        client = OdooClient()
+        
+        # UTC vaqtida hisoblaymiz, chunki Odoo DB da asosan UTC saqlanadi
+        time_limit = (datetime.utcnow() - timedelta(minutes=minutes)).strftime('%Y-%m-%d %H:%M:%S')
+        
+        if topic == 'summary':
+            sales_count = client.models.execute_kw(client.db, client.uid, client.password, 'sale.order', 'search_count', [[('create_date', '>=', time_limit)]])
+            payments_count = client.models.execute_kw(client.db, client.uid, client.password, 'account.payment', 'search_count', [[('create_date', '>=', time_limit)]])
+            # We can also check recent pickings or partner debt changes, but counting sales and payments is a good start.
+            
+            res = f"🕒 Oxirgi {minutes} daqiqa ichida Odoo bazasida quyidagi o'zgarishlar yuz berdi:\n"
+            res += f"- 🛒 {sales_count} ta yangi nakladnoy (sotuv) urildi.\n"
+            res += f"- 💰 {payments_count} ta yangi kassa (to'lov) kiritildi.\n"
+            res += "\n(Agar bulardan qaysidir biri haqida to'liqroq ma'lumot kerak bo'lsa, xabaringiz oxirida mendan so'rang!)"
+            return res
+            
+        elif topic == 'sales':
+            sales = client.models.execute_kw(client.db, client.uid, client.password, 'sale.order', 'search_read', 
+                [[('create_date', '>=', time_limit)]], 
+                {'fields': ['name', 'partner_id', 'amount_total', 'state', 'user_id'], 'order': 'create_date desc', 'limit': 50})
+            if not sales:
+                return f"Oxirgi {minutes} daqiqa ichida yangi nakladnoylar urilmagan."
+            
+            res = f"🛒 Oxirgi {minutes} daqiqa ichida urilgan NAKLADNOYLAR:\n"
+            for s in sales:
+                partner = s.get('partner_id', [0, "Noma'lum"])[1]
+                user = s.get('user_id', [0, "Noma'lum"])[1]
+                res += f" - {s['name']} | Mijoz: {partner} | Summa: {s['amount_total']:,.2f} | Menejer: {user} | Holat: {s['state']}\n"
+            return res
+            
+        elif topic == 'payments':
+            payments = client.models.execute_kw(client.db, client.uid, client.password, 'account.payment', 'search_read', 
+                [[('create_date', '>=', time_limit)]], 
+                {'fields': ['name', 'partner_id', 'amount', 'payment_type', 'journal_id'], 'order': 'create_date desc', 'limit': 50})
+            if not payments:
+                return f"Oxirgi {minutes} daqiqa ichida yangi kassa (to'lov) kiritilmagan."
+                
+            res = f"💰 Oxirgi {minutes} daqiqa ichida kiritilgan KASSALAR:\n"
+            for p in payments:
+                partner = p.get('partner_id', [0, "Noma'lum"])[1]
+                journal = p.get('journal_id', [0, "Noma'lum"])[1]
+                ptype = "Kirim" if p['payment_type'] == 'inbound' else "Chiqim"
+                res += f" - {p['name']} | Mijoz: {partner} | Summa: {p['amount']:,.2f} | Turi: {ptype} | Kassa: {journal}\n"
+            return res
+            
+        else:
+            return "Noma'lum topic. Iltimos 'summary', 'sales' yoki 'payments' dan birini tanlang."
+    except Exception as e:
+        return f"O'zgarishlarni tekshirishda xato: {e}"
+
 odoo_tools_list = [
     get_client_debt, 
     get_product_stock, 
@@ -607,6 +669,8 @@ odoo_tools_list = [
     generate_receipt_image_tool,
     delete_bron_tool,
     update_bron_qty_tool,
+    get_recent_changes_tool,
+    execute_odoo_shell_command,
 ]
 
 def update_odoo_record(model_name: str, record_id: int, fields_to_update: dict) -> str:
@@ -739,3 +803,30 @@ def client_profile_tool(partner_name: str) -> str:
     from odoo_client import OdooClient
     client = OdooClient()
     return client.get_client_profile(partner_name)
+
+def execute_odoo_shell_command(command: str) -> str:
+    """
+    Kompaniya serverida to'g'ridan-to'g'ri terminal (Windows PowerShell/CMD) komandalarini ishga tushirish.
+    Faqat mutlaq zarurat bo'lganda ishlating.
+    Args:
+        command: Terminalda bajariladigan buyruq.
+    Returns:
+        Terminal komandasining natijasi.
+    """
+    import subprocess
+    try:
+        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=30)
+        output = result.stdout.strip()
+        error = result.stderr.strip()
+        if not output and not error:
+            return "Buyruq bajarildi, ammo ekranga hech narsa chiqmadi."
+        res = ""
+        if output:
+            res += f"Natija:\n{output}\n"
+        if error:
+            res += f"Xato:\n{error}\n"
+        if len(res) > 3000:
+            res = res[:3000] + "\n...(qisqartirildi)"
+        return res
+    except Exception as e:
+        return f"Terminal xatosi: {e}"

@@ -573,13 +573,9 @@ async def auto_confirm_brons_job(context: ContextTypes.DEFAULT_TYPE):
         for b in active_brons:
             try:
                 client.models.execute_kw(client.db, client.uid, client.password, 'bron.order', 'action_confirm_reserve', [[b['id']]])
-                await context.bot.send_message(chat_id=chat_id, text=f"✅ {b['name']} avtomatik tarzda tasdiqlandi!")
             except Exception as e:
-                # Odoo ba'zan funksiya muvaffaqiyatli tugasa-da "None" qaytargani uchun XML-RPC xatosi beradi.
-                if "cannot marshal None" in str(e):
-                    await context.bot.send_message(chat_id=chat_id, text=f"✅ {b['name']} avtomatik tarzda tasdiqlandi!")
-                else:
-                    await context.bot.send_message(chat_id=chat_id, text=f"⚠️ {b['name']} bronni tasdiqlab bo'lmadi! Ostatkada yetarli emas bo'lishi mumkin.\n\nXato: {e}")
+                # Odoo ba'zan funksiya muvaffaqiyatli tugasa-da "None" qaytargani uchun XML-RPC xatosi beradi. Buni jim e'tiborsiz qoldiramiz.
+                pass
     except Exception as e:
         pass # Tarmoq xatolari yoki Odoo bilan bog'lanish muammolarini o'tkazib yuboramiz
 

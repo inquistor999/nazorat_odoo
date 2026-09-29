@@ -266,19 +266,24 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(f"Salom {user_name}, siz super adminsiz. Tizimga kirdingiz!")
         return ConversationHandler.END
         
-    if text.startswith("login:") and len(text.split(":")) == 2:
-        pwd = text.split(":")[1].strip()
-        passwords = load_passwords()
-        if pwd in passwords:
-            role = passwords[pwd].get('role', 'admin')
-            mgr = passwords[pwd].get('odoo_manager')
-            remove_blocked_user(user_id)
-            save_allowed_user(user_id, user_name, role, mgr)
-            if role == 'admin':
-                await update.message.reply_text(f"Salom {user_name}, siz super adminsiz. Tizimga kirdingiz!")
+    if text.startswith("login:") and text not in ["login:user", "login:kimlar"] and not text.startswith("login:kick") and not text.startswith("login:block") and not text.startswith("login:unblock"):
+        parts = text.split(":", 1)
+        if len(parts) == 2:
+            pwd = parts[1].strip()
+            passwords = load_passwords()
+            if pwd in passwords:
+                role = passwords[pwd].get('role', 'admin')
+                mgr = passwords[pwd].get('odoo_manager')
+                remove_blocked_user(user_id)
+                save_allowed_user(user_id, user_name, role, mgr)
+                if role == 'admin':
+                    await update.message.reply_text(f"Salom {user_name}, siz super adminsiz. Tizimga kirdingiz!")
+                else:
+                    await update.message.reply_text(f"Salom {mgr}. Tizimga kirdingiz.")
+                return ConversationHandler.END
             else:
-                await update.message.reply_text(f"Salom {mgr}. Tizimga kirdingiz.")
-            return ConversationHandler.END
+                await update.message.reply_text("❌ Noto'g'ri parol! Tizimga kirish uchun to'g'ri parolni kiriting.")
+                return ConversationHandler.END
         
     if is_user_blocked(user_id):
         await update.message.reply_text("⛔ Siz bloklangansiz.")

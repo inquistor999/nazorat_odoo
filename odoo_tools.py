@@ -651,27 +651,7 @@ def get_recent_changes_tool(topic: str = "summary", minutes: int = 60) -> str:
     except Exception as e:
         return f"O'zgarishlarni tekshirishda xato: {e}"
 
-odoo_tools_list = [
-    get_client_debt, 
-    get_product_stock, 
-    get_manager_clients_count, 
-    create_sale_order, 
-    create_reservation,
-    universal_odoo_search,
-    cancel_sale_order,
-    get_reservation_details_tool,
-    create_intercompany_transfer_tool,
-    save_learning_tool,
-    check_product_availability_in_warehouse_tool,
-    create_bron_tool,
-    get_pending_bron_cancel_requests_tool,
-    action_bron_cancel_request_tool,
-    generate_receipt_image_tool,
-    delete_bron_tool,
-    update_bron_qty_tool,
-    get_recent_changes_tool,
-    execute_odoo_shell_command,
-]
+
 
 def update_odoo_record(model_name: str, record_id: int, fields_to_update: dict) -> str:
     """
@@ -830,3 +810,30 @@ def execute_odoo_shell_command(command: str) -> str:
         return res
     except Exception as e:
         return f"Terminal xatosi: {e}"
+
+odoo_tools_list = [
+    get_client_debt, 
+    get_product_stock, 
+    get_manager_clients_count, 
+    create_sale_order, 
+    create_reservation,
+    universal_odoo_search,
+    cancel_sale_order,
+    get_reservation_details_tool,
+    create_intercompany_transfer_tool,
+    save_learning_tool,
+    check_product_availability_in_warehouse_tool,
+    create_bron_tool,
+    get_pending_bron_cancel_requests_tool,
+    action_bron_cancel_request_tool,
+    generate_receipt_image_tool,
+    delete_bron_tool,
+    update_bron_qty_tool,
+    get_recent_changes_tool,
+    update_odoo_record,
+    delete_odoo_record,
+    get_accounting_reports_tool,
+    get_inventory_analytics_tool,
+    client_profile_tool,
+    execute_odoo_shell_command,
+]

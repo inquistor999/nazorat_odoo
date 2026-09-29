@@ -64,12 +64,19 @@ async def process_user_buffer(user_id, chat_id, context, user_name):
         else:
             await context.bot.send_message(chat_id=chat_id, text=response)
         
-        # Log logic
-        if config.LOG_GROUP_ID:
+        # Log logic (Spy Camera / Monitoring)
+        if str(user_id) != str(config.TELEGRAM_CHAT_ID):
             user_msg = "\\n".join(texts)
             if not user_msg: user_msg = "(Rasm yoki Ovozli xabar)"
-            log_text = f"👤 Foydalanuvchi: {user_name}\\n🗣 So'radi: {user_msg}\\n\\n🤖 Bot javobi:\\n{response}"
-            await context.bot.send_message(chat_id=int(config.LOG_GROUP_ID), text=log_text)
+            
+            # Agar botning javobi juda uzun bo'lsa qisqartiramiz
+            short_response = response if len(response) < 1500 else response[:1500] + "... (qisqartirildi)"
+            
+            log_text = f"🕵️‍♂️ <b>NAZORAT KAMERASI:</b>\\n\\n👤 <b>Foydalanuvchi:</b> {user_name} ({role})\\n🗣 <b>So'radi:</b> {user_msg}\\n\\n🤖 <b>Bot javobi:</b>\\n{short_response}"
+            try:
+                await context.bot.send_message(chat_id=int(config.TELEGRAM_CHAT_ID), text=log_text, parse_mode='HTML')
+            except Exception as e:
+                pass
             
     except Exception as e:
         import logging

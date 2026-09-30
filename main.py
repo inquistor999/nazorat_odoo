@@ -68,20 +68,16 @@ async def process_user_buffer(user_id, chat_id, context, user_name):
         else:
             await context.bot.send_message(chat_id=chat_id, text=response)
         
-        # Log logic (Spy Camera / Monitoring)
-        if str(user_id) != str(config.TELEGRAM_CHAT_ID):
-            user_msg = "\\n".join(texts)
-            if not user_msg: user_msg = "(Rasm yoki Ovozli xabar)"
-            
-            # Agar botning javobi juda uzun bo'lsa qisqartiramiz
-            short_response = response if len(response) < 1500 else response[:1500] + "... (qisqartirildi)"
-            
-            log_text = f"🕵️‍♂️ <b>NAZORAT KAMERASI:</b>\\n\\n👤 <b>Foydalanuvchi:</b> {user_name} ({role})\\n🗣 <b>So'radi:</b> {user_msg}\\n\\n🤖 <b>Bot javobi:</b>\\n{short_response}"
-            try:
-                await context.bot.send_message(chat_id=int(config.TELEGRAM_CHAT_ID), text=log_text, parse_mode='HTML')
-            except Exception as e:
-                pass
-            
+        # Chat tarixini to'g'ri username bilan yangilash
+        import chat_history as ch
+        ch.add_message(
+            user_id=user_id,
+            username=user_name,
+            odoo_manager=odoo_manager or '',
+            user_text=combined_text if combined_text else '(Rasm yoki Ovozli xabar)',
+            bot_reply=response
+        )
+        
     except Exception as e:
         import logging
         logging.error(f"Process buffer error: {e}")
@@ -275,6 +271,39 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
         remove_blocked_user(user_id)
         save_allowed_user(user_id, user_name, "admin", None, None, None)
         await update.message.reply_text(f"Salom {user_name}, siz super adminsiz. Tizimga kirdingiz!")
+        return ConversationHandler.END
+    
+    # Super admin uchun: menejer:mirahmad:10 -> oxirgi 10 daqiqa suhbati
+    if text.startswith("menejer:") and str(user_id) == str(config.TELEGRAM_CHAT_ID):
+        parts = text.split(":")
+        if len(parts) >= 3:
+            manager_name = parts[1].strip()
+            try:
+                minutes = int(parts[2].strip())
+            except ValueError:
+                await update.message.reply_text("❌ Format: menejer:mirahmad:10 (10 - minut)")
+                return ConversationHandler.END
+            
+            import chat_history as ch
+            uid_str, uname, odoo_mgr = ch.find_user_by_manager_name(manager_name)
+            
+            if not uid_str:
+                await update.message.reply_text(f"❌ '{manager_name}' ismli menejer topilmadi yoki hali suhbat yo'q.")
+                return ConversationHandler.END
+            
+            messages = ch.get_last_n_minutes(int(uid_str), minutes)
+            result_text = ch.format_history_for_admin(messages, uname, odoo_mgr, minutes)
+            
+            # Telegram 4096 belgidan uzun xabarni qabul qilmaydi, bo'laklarga bo'lamiz
+            max_len = 4000
+            if len(result_text) <= max_len:
+                await update.message.reply_text(result_text, parse_mode='HTML')
+            else:
+                chunks = [result_text[i:i+max_len] for i in range(0, len(result_text), max_len)]
+                for chunk in chunks:
+                    await update.message.reply_text(chunk, parse_mode='HTML')
+        else:
+            await update.message.reply_text("Format: menejer:mirahmad:10")
         return ConversationHandler.END
         
     if text.startswith("login:") and text not in ["login:user", "login:kimlar"] and not text.startswith("login:kick") and not text.startswith("login:block") and not text.startswith("login:unblock"):

@@ -9,6 +9,7 @@ blocked_users.json
 passwords.json
 product_cache.json
 products_db.json
+chat_history.json
 bot.log
 *.log
 temp_*.jpg

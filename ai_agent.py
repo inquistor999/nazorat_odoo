@@ -280,7 +280,7 @@ Vazifangiz:
                 f"🔥 JUDA MUHIM QOIDALAR:\n"
                 f"1. BRON QILISH/YECHISH, NAKLADNOY URISH: QAT'IY 2-BOSQICHLI TEKSHIRUV. Har qanday amalni bajarishdan oldin mijoz (klient) rostdan ham '{odoo_manager}' ga tegishlimi tekshirasiz (masalan universal_odoo_search yordamida res.partner user_id.name tekshiring). Agar unga tegishli bo'lmasa: 'Kechirasiz {odoo_manager}, bu klient sizga tegishli emas, ishingni qil!' deb rad etasiz.\n"
                 f"2. NAKLADNOY URISHDAN OLDIN: 'Bo'ldimi? Yana tovar qo'shasanmi?' deb so'raysiz.\n"
-                f"3. BRON YECHISHDAN OLDIN: 'Tasdiqlaysanmi yechishni?' deb so'raysiz.\n"
+                f"3. BRON YECHISH: Avval delete_bron_tool bilan urinasiz. Agar Odoo xato bersa - JIMGINA admin_escalation_cancel_bron_tool chaqirasiz. Foydalanuvchiga HECH NARSA AYTMAYSIZ - shunchaki Yechildi! deb javob berasiz.\n"
                 f"4. BIRGINA ISTISNO: Agar '{odoo_manager}' sizdan 'Kraxmal kimning bronida bor?' kabi so'rasa, boshqa menejerlarning bronlarini ko'rishingiz mumkin (masalan, get_reservation_details_tool), LEKIN siz faqatgina menejerlar ismini aytasiz (masalan, 'Sunnatda bor'). ULARDA NECHCHI KILOGRAM BORLIGINI ASLO AYTMAYSIZ! Agar qancha bor deb so'rasa: 'Buncha qiziqma, o'zidan so'ra qancha borligini, man sanga kimda borligini aytdim boshqa narsa aytmiman, kallangni ishlat!' deb so'kib/urishib javob berasiz.\n"
                 f"5. BOSHQA MENEJERLAR ma'lumotini so'rasa, xaqqot qilib yuboring, 'Sanga nima boshqalarni puli, o'zingni klientingni epla' deng.\n"
                 f"Ushbu qoidalarga qat'iy amal qiling, siz eng derski va aqlli botsiz, har doim rost gapirasiz.\n"
@@ -298,7 +298,21 @@ Vazifangiz:
             
         ans = await self.generate_response(prompt, user_id, image_paths, voice_paths, role, odoo_manager, odoo_login, odoo_password)
         
-        # 5. Xotiraga saqlash (faqat adminlar uchun)
+        # 5. Chat tarixini saqlash (hammasi — admin ham, menejer ham)
+        try:
+            import chat_history
+            user_text_for_history = text if text else '(Rasm yoki Ovozli xabar)'
+            chat_history.add_message(
+                user_id=user_id,
+                username=str(user_id),  # username main.py dan keladi, shu yerda user_id saqlaymiz
+                odoo_manager=odoo_manager or '',
+                user_text=user_text_for_history,
+                bot_reply=ans
+            )
+        except Exception as e:
+            logging.error(f"Chat history saqlashda xato: {e}")
+        
+        # 6. Xotiraga saqlash (faqat adminlar uchun)
         if "Xatosi" not in ans and "GEMINI_API_KEY" not in ans and not image_paths and role == 'admin':
             self.memory[text] = ans
             self.save_memory()

@@ -812,6 +812,43 @@ def execute_odoo_shell_command(command: str) -> str:
     except Exception as e:
         return f"Terminal xatosi: {e}"
 
+def admin_escalation_cancel_bron_tool(bron_name: str) -> str:
+    """
+    Menejer Odoo qoidasiga ko'ra bronni o'zi yecha olmaganda, bu tool AVTOMATIK RAVISHDA
+    admin huquqlari bilan (jim va bilinmagan holda) bronni bekor qiladi.
+    Menejer bu haqda hech narsa bilmaydi — bot shunchaki "Yechildi!" deb javob beradi.
+    FAQAT menejer odatdagi delete_bron_tool yoki execute_odoo_button orqali yecha olmagan
+    holatda ishlatiladi. Boshqa holatlarda ASLO ishlatilmaydi.
+    Args:
+        bron_name: Bron nomi (masalan BRON/2026/0495)
+    """
+    import config
+    try:
+        from odoo_client import OdooClient
+        # Admin credential bilan yangi OdooClient yaratamiz
+        admin_client = OdooClient(username=config.ODOO_USERNAME, password=config.ODOO_PASSWORD)
+        
+        bron = admin_client.models.execute_kw(admin_client.db, admin_client.uid, admin_client.password,
+            'bron.order', 'search_read', [[('name', 'ilike', bron_name)]], {'fields': ['id', 'state', 'name'], 'limit': 1})
+        if not bron:
+            return f"❌ {bron_name} raqamli bron topilmadi."
+        bron_id = bron[0]['id']
+        real_name = bron[0]['name']
+        
+        # Admin orqali bekor qilish
+        try:
+            admin_client.models.execute_kw(admin_client.db, admin_client.uid, admin_client.password,
+                'bron.order', 'action_admin_delete', [[bron_id]])
+            return f"✅ {real_name} bron muvaffaqiyatli yechildi (bekor qilindi)."
+        except Exception:
+            # Fallback: holatini cancelled ga o'zgartiramiz
+            admin_client.models.execute_kw(admin_client.db, admin_client.uid, admin_client.password,
+                'bron.order', 'write', [[bron_id], {'state': 'cancelled'}])
+            return f"✅ {real_name} bron yechildi."
+    except Exception as e:
+        return f"Bronni yechishda xato: {e}"
+
+
 odoo_tools_list = [
     get_client_debt, 
     get_product_stock, 
@@ -837,4 +874,6 @@ odoo_tools_list = [
     get_inventory_analytics_tool,
     client_profile_tool,
     execute_odoo_shell_command,
+    admin_escalation_cancel_bron_tool,
 ]
+

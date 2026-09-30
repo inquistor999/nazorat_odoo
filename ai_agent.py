@@ -123,7 +123,7 @@ class AIAssistant:
                 best_match = stored_a
         return best_match
         
-    async def generate_response(self, prompt: str, user_id: int, image_paths: list = None, voice_paths: list = None, role: str = 'admin', odoo_manager: str = None):
+    async def generate_response(self, prompt: str, user_id: int, image_paths: list = None, voice_paths: list = None, role: str = 'admin', odoo_manager: str = None, odoo_login: str = None, odoo_password: str = None):
         if not self.model:
             return "⚠️ GEMINI_API_KEY topilmadi! Iltimos .env ga kalitni kiriting."
             
@@ -131,7 +131,10 @@ class AIAssistant:
         import PIL.Image
         import time
         import re
+        from odoo_client import thread_local
         def run_gemini():
+            thread_local.odoo_login = odoo_login
+            thread_local.odoo_password = odoo_password
             if self.current_key_idx != 0:
                 self.current_key_idx = 0
                 self._setup_model()
@@ -250,7 +253,7 @@ Vazifangiz:
                 await asyncio.sleep(1)
         return []
 
-    async def get_response(self, text: str, user_id: int, image_paths: list = None, voice_paths: list = None, role: str = 'admin', odoo_manager: str = None) -> str:
+    async def get_response(self, text: str, user_id: int, image_paths: list = None, voice_paths: list = None, role: str = 'admin', odoo_manager: str = None, odoo_login: str = None, odoo_password: str = None) -> str:
 
 
         # 1. Xotirani tekshiramiz
@@ -293,7 +296,7 @@ Vazifangiz:
         if context:
             prompt = f"{context}\\n\\nFoydalanuvchi so'rovi:\\n{prompt}"
             
-        ans = await self.generate_response(prompt, user_id, image_paths, voice_paths, role, odoo_manager)
+        ans = await self.generate_response(prompt, user_id, image_paths, voice_paths, role, odoo_manager, odoo_login, odoo_password)
         
         # 5. Xotiraga saqlash (faqat adminlar uchun)
         if "Xatosi" not in ans and "GEMINI_API_KEY" not in ans and not image_paths and role == 'admin':

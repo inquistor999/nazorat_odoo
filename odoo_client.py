@@ -13,15 +13,30 @@ def _clean_product_name(name):
     return name.replace(' (JAMI)', '').strip()
 
 
+import threading
+thread_local = threading.local()
+
 class OdooClient:
-    def __init__(self):
+    def __init__(self, username=None, password=None):
         self.url = config.ODOO_URL
         self.db = config.ODOO_DB
-        self.username = config.ODOO_USERNAME
-        self.password = config.ODOO_PASSWORD
         
+        if hasattr(thread_local, 'odoo_login') and thread_local.odoo_login:
+            self.username = thread_local.odoo_login
+            self.password = thread_local.odoo_password
+        else:
+            self.username = username if username else config.ODOO_USERNAME
+            self.password = password if password else config.ODOO_PASSWORD
+            
         self.common = xmlrpc.client.ServerProxy(f'{self.url}/xmlrpc/2/common')
-        self.uid = self.common.authenticate(self.db, self.username, self.password, {})
+        try:
+            self.uid = self.common.authenticate(self.db, self.username, self.password, {})
+        except Exception as e:
+            raise Exception(f"Odoo ga ulanishda xato: login yoki parol noto'g'ri. ({e})")
+            
+        if not self.uid:
+            raise Exception("Odoo ga ulanishda xato: login yoki parol noto'g'ri (Autentifikatsiya rad etildi).")
+            
         self.models = xmlrpc.client.ServerProxy(f'{self.url}/xmlrpc/2/object')
 
     def _exec(self, model, method, domain, fields, **kwargs):

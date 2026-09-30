@@ -38,11 +38,15 @@ async def process_user_buffer(user_id, chat_id, context, user_name):
         users = load_allowed_users()
         role = 'admin'
         odoo_manager = None
+        odoo_login = None
+        odoo_password = None
         if str(user_id) in users:
             role = users[str(user_id)].get('role', 'admin')
             odoo_manager = users[str(user_id)].get('odoo_manager')
+            odoo_login = users[str(user_id)].get('odoo_login')
+            odoo_password = users[str(user_id)].get('odoo_password')
             
-        response = await ai_assistant.get_response(combined_text, user_id, image_paths, voice_paths, role, odoo_manager)
+        response = await ai_assistant.get_response(combined_text, user_id, image_paths, voice_paths, role, odoo_manager, odoo_login, odoo_password)
         
         # Cleanup
         for img in image_paths:
@@ -111,10 +115,10 @@ def load_allowed_users():
             return {}
     return {}
 
-def save_allowed_user(user_id, username="Foydalanuvchi", role="admin", odoo_manager=None):
+def save_allowed_user(user_id, username="Foydalanuvchi", role="admin", odoo_manager=None, odoo_login=None, odoo_password=None):
     import json
     users = load_allowed_users()
-    users[str(user_id)] = {"username": username, "role": role, "odoo_manager": odoo_manager}
+    users[str(user_id)] = {"username": username, "role": role, "odoo_manager": odoo_manager, "odoo_login": odoo_login, "odoo_password": odoo_password}
     with open(ALLOWED_USERS_FILE, 'w', encoding='utf-8') as f:
         json.dump(users, f, ensure_ascii=False)
         
@@ -269,7 +273,7 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Master password overrides block!
     if text == "login:umar3229":
         remove_blocked_user(user_id)
-        save_allowed_user(user_id, user_name, "admin", None)
+        save_allowed_user(user_id, user_name, "admin", None, None, None)
         await update.message.reply_text(f"Salom {user_name}, siz super adminsiz. Tizimga kirdingiz!")
         return ConversationHandler.END
         
@@ -277,12 +281,21 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
         parts = text.split(":", 1)
         if len(parts) == 2:
             pwd = parts[1].strip()
+            
+            if pwd == "mirahmad123":
+                remove_blocked_user(user_id)
+                save_allowed_user(user_id, user_name, "manager", "O`tkirov Mirahmad", "mirahmad", "mirahmad1122")
+                await update.message.reply_text(f"Salom O`tkirov Mirahmad. Odoo profilingizga muvaffaqiyatli ulandik.")
+                return ConversationHandler.END
+                
             passwords = load_passwords()
             if pwd in passwords:
                 role = passwords[pwd].get('role', 'admin')
                 mgr = passwords[pwd].get('odoo_manager')
+                odoo_login = passwords[pwd].get('odoo_login')
+                odoo_pwd = passwords[pwd].get('odoo_password')
                 remove_blocked_user(user_id)
-                save_allowed_user(user_id, user_name, role, mgr)
+                save_allowed_user(user_id, user_name, role, mgr, odoo_login, odoo_pwd)
                 if role == 'admin':
                     await update.message.reply_text(f"Salom {user_name}, siz super adminsiz. Tizimga kirdingiz!")
                 else:
@@ -440,7 +453,9 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
     if str(user_id) in users and users[str(user_id)].get("username") != user_name:
         role = users[str(user_id)].get("role", "admin")
         mgr = users[str(user_id)].get("odoo_manager")
-        save_allowed_user(user_id, user_name, role, mgr)
+        olo = users[str(user_id)].get("odoo_login")
+        opw = users[str(user_id)].get("odoo_password")
+        save_allowed_user(user_id, user_name, role, mgr, olo, opw)
         
     import group_order_wizard
     if await group_order_wizard.handle_manual_product_name(update, context):

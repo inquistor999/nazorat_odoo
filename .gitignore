@@ -2,4 +2,21 @@
 __pycache__/
 *.pyc
 
+# Runtime data files (server da o'zining nusxasi bor, git bilan to'qnashuv bo'lmasin)
 memory.json
+allowed_users.json
+blocked_users.json
+passwords.json
+product_cache.json
+products_db.json
+bot.log
+*.log
+temp_*.jpg
+temp_*.ogg
+receipt_*.png
+
+# Scratch/test fayllar
+scratch/
+test_*.py
+test.txt
+temp_accounting.py

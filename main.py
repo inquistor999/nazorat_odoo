@@ -270,6 +270,7 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
     if text == "login:umar3229":
         remove_blocked_user(user_id)
         save_allowed_user(user_id, user_name, "admin", None, None, None)
+        ai_assistant.clear_user_session(user_id)  # Eski menejer sessiyasini tozalaymiz
         await update.message.reply_text(f"Salom {user_name}, siz super adminsiz. Tizimga kirdingiz!")
         return ConversationHandler.END
     
@@ -314,6 +315,7 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
             if pwd == "mirahmad123":
                 remove_blocked_user(user_id)
                 save_allowed_user(user_id, user_name, "manager", "O`tkirov Mirahmad", "mirahmad", "mirahmad1122")
+                ai_assistant.clear_user_session(user_id)  # Eski sessiyani tozalaymiz
                 await update.message.reply_text(f"Salom O`tkirov Mirahmad. Odoo profilingizga muvaffaqiyatli ulandik.")
                 return ConversationHandler.END
                 
@@ -325,6 +327,7 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
                 odoo_pwd = passwords[pwd].get('odoo_password')
                 remove_blocked_user(user_id)
                 save_allowed_user(user_id, user_name, role, mgr, odoo_login, odoo_pwd)
+                ai_assistant.clear_user_session(user_id)  # Eski sessiyani tozalaymiz
                 if role == 'admin':
                     await update.message.reply_text(f"Salom {user_name}, siz super adminsiz. Tizimga kirdingiz!")
                 else:

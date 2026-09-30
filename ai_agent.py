@@ -49,6 +49,16 @@ class AIAssistant:
         
         if self.api_keys:
             self._setup_model()
+
+    def clear_user_session(self, user_id: int):
+        """
+        Foydalanuvchi yangi login qilganda yoki profil o'zgartirganda
+        eski AI chat sessiyasini butunlay tozalaydi.
+        Navbatdagi xabarda bot yangi rol (admin yoki menejer) bilan yangi suhbat boshlaydi.
+        """
+        if user_id in self.user_chats:
+            del self.user_chats[user_id]
+            logging.info(f"User {user_id} AI session cleared (login change)")
             
     def _setup_model(self):
         import google.generativeai as genai

@@ -115,19 +115,38 @@ def get_last_n_minutes(user_id: int, minutes: int) -> list:
 def find_user_by_manager_name(manager_name: str) -> tuple:
     """
     Odoo menejer ismi bo'yicha user_id va username ni topadi.
+    1-usul: chat_history.json dan qidiradi
+    2-usul: allowed_users.json dan qidiradi (fallback — yangi deployment uchun)
     
     Returns:
         (user_id_str, username, odoo_manager) yoki (None, None, None)
     """
-    history = load_history()
     manager_name_lower = manager_name.lower().strip()
     
+    # 1. Avval chat_history.json dan qidiramiz
+    history = load_history()
     for uid, info in history.items():
         mgr = info.get('odoo_manager', '') or ''
         if manager_name_lower in mgr.lower():
             return uid, info.get('username', 'Noma\'lum'), mgr
     
+    # 2. Agar topilmasa, allowed_users.json dan qidiramiz
+    try:
+        import os, json
+        au_file = 'allowed_users.json'
+        if os.path.exists(au_file):
+            with open(au_file, 'r', encoding='utf-8') as f:
+                allowed = json.load(f)
+            for uid, info in allowed.items():
+                mgr = info.get('odoo_manager', '') or ''
+                if manager_name_lower in mgr.lower():
+                    uname = info.get('username', 'Noma\'lum')
+                    return uid, uname, mgr
+    except Exception:
+        pass
+    
     return None, None, None
+
 
 
 def format_history_for_admin(messages: list, username: str, odoo_manager: str, minutes: int) -> str:

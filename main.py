@@ -5,6 +5,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters, ConversationHandler
 from telegram.request import HTTPXRequest
+from telegram.error import NetworkError, TimedOut
+from apscheduler.jobstores.base import JobLookupError as APJobLookupError
 import config
 from odoo_client import OdooClient
 import time
@@ -222,11 +224,33 @@ async def send_with_retry(send_func, retries=3, delay=3):
         try:
             return await send_func()
         except Exception as e:
-            if attempt < retries - 1:
+            err_msg = str(e)
+            if 'Flood control' in err_msg or 'Too Many Requests' in err_msg:
+                import re
+                wait_match = re.search(r'Retry in (\d+)', err_msg)
+                wait_secs = int(wait_match.group(1)) + 1 if wait_match else delay
+                logging.warning(f"Flood control: {wait_secs}s kutilmoqda...")
+                await asyncio.sleep(wait_secs)
+            elif attempt < retries - 1:
                 logging.warning(f"Yuborishda xato: {e}. {delay}s dan keyin qayta uriniladi...")
                 await asyncio.sleep(delay)
             else:
                 raise
+
+
+async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Barcha xatolarni ushlab, faqat muhimlarini log qiladi."""
+    error = context.error
+    # JobLookupError - job allaqachon tugagan, bu normal holat
+    if isinstance(error, APJobLookupError):
+        logging.debug(f"JobLookupError (normal): {error}")
+        return
+    # NetworkError / TimedOut - tarmoq muammolari, kritik emas
+    if isinstance(error, (NetworkError, TimedOut)):
+        logging.warning(f"Tarmoq xatosi (normal): {error}")
+        return
+    # Boshqa xatolarni log qilamiz
+    logging.error(f"Bot xatosi: {error}", exc_info=context.error)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -279,15 +303,21 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(f"Salom {user_name}, siz super adminsiz. Tizimga kirdingiz!")
         return ConversationHandler.END
     
-    # Super admin uchun: menejer:mirahmad:10 -> oxirgi 10 daqiqa suhbati
-    if text.startswith("menejer:") and str(user_id) == str(config.TELEGRAM_CHAT_ID):
+    # Super admin uchun: menejer:mirahmad:10 yoki istoriya:mirahmad:10 -> oxirgi 10 daqiqa suhbati
+    if text.startswith("menejer:") or text.startswith("istoriya:"):
+        users_for_check = load_allowed_users()
+        is_admin = (str(user_id) == str(config.TELEGRAM_CHAT_ID)) or (users_for_check.get(str(user_id), {}).get('role') == 'admin')
+        if not is_admin:
+            await update.message.reply_text("⛔ Bu buyruqni faqat Bosh Admin ishlata oladi!")
+            return ConversationHandler.END
+
         parts = text.split(":")
         if len(parts) >= 3:
             manager_name = parts[1].strip()
             try:
                 minutes = int(parts[2].strip())
             except ValueError:
-                await update.message.reply_text("❌ Format: menejer:mirahmad:10 (10 - minut)")
+                await update.message.reply_text("❌ Format: istoriya:mirahmad:10 (10 - minut)")
                 return ConversationHandler.END
             
             import chat_history as ch
@@ -309,7 +339,7 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
                 for chunk in chunks:
                     await update.message.reply_text(chunk, parse_mode='HTML')
         else:
-            await update.message.reply_text("Format: menejer:mirahmad:10")
+            await update.message.reply_text("Format: istoriya:mirahmad:10")
         return ConversationHandler.END
         
     if text.startswith("login:") and text not in ["login:user", "login:kimlar"] and not text.startswith("login:kick") and not text.startswith("login:block") and not text.startswith("login:unblock"):
@@ -346,17 +376,13 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("⛔ Siz bloklangansiz.")
         return ConversationHandler.END
         
-    if text == "login:user" or text == "login:kimlar":
+    if text == "login:admin":
         users = load_allowed_users()
-        if not users:
-            await update.message.reply_text("Hech kim tizimga kirmagan.")
-        else:
-            msg = "🟢 Faol foydalanuvchilar:\n\n"
-            updated = False
-            for uid, info in users.items():
+        admins = []
+        updated = False
+        for uid, info in users.items():
+            if info.get('role', 'admin') == 'admin':
                 name = info.get('username', 'Foydalanuvchi')
-                role = info.get('role', 'admin')
-                mgr = info.get('odoo_manager')
                 if name == "Foydalanuvchi" or name == "foydalanuvchi":
                     try:
                         chat = await context.bot.get_chat(int(uid))
@@ -365,17 +391,60 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
                         updated = True
                     except Exception:
                         pass
-                if role == 'manager':
-                    msg += f"👤 {name} : {mgr}\n"
-                else:
-                    msg += f"👑 {name} : (Admin)\n"
+                admins.append(f"👑 {name} (ID: {uid})")
+        
+        if updated:
+            import json
+            with open(ALLOWED_USERS_FILE, 'w', encoding='utf-8') as fw:
+                json.dump(users, fw, ensure_ascii=False)
+                
+        if admins:
+            msg = "👑 *Bosh Adminlar (Super Admin)*:\n\n" + "\n".join(f" 🔸 {a}" for a in admins)
+        else:
+            msg = "Hech qanday Bosh Admin topilmadi."
             
-            if updated:
-                import json
-                with open(ALLOWED_USERS_FILE, 'w', encoding='utf-8') as fw:
-                    json.dump(users, fw, ensure_ascii=False)
-                    
-            await update.message.reply_text(msg)
+        await update.message.reply_text(msg, parse_mode='Markdown')
+        return ConversationHandler.END
+
+    if text == "login:user" or text == "login:kimlar":
+        users = load_allowed_users()
+        managers_dict = {}
+        updated = False
+        
+        for uid, info in users.items():
+            if info.get('role', 'admin') != 'admin':
+                name = info.get('username', 'Foydalanuvchi')
+                mgr = info.get('odoo_manager', 'Noma\'lum')
+                
+                if name == "Foydalanuvchi" or name == "foydalanuvchi":
+                    try:
+                        chat = await context.bot.get_chat(int(uid))
+                        name = chat.first_name if chat.first_name else "Foydalanuvchi"
+                        users[uid]['username'] = name
+                        updated = True
+                    except Exception:
+                        pass
+                        
+                if mgr not in managers_dict:
+                    managers_dict[mgr] = []
+                managers_dict[mgr].append(f"{name} (ID: {uid})")
+
+        if updated:
+            import json
+            with open(ALLOWED_USERS_FILE, 'w', encoding='utf-8') as fw:
+                json.dump(users, fw, ensure_ascii=False)
+
+        if managers_dict:
+            msg = "👤 *Menejerlar va ularga ulangan foydalanuvchilar:*\n\n"
+            for mgr, u_list in managers_dict.items():
+                msg += f"🔸 *{mgr}* ({len(u_list)} ta akkaunt ulangan):\n"
+                for u in u_list:
+                    msg += f"   🔹 {u}\n"
+                msg += "\n"
+        else:
+            msg = "Hech qanday menejer tizimga ulanmagan."
+
+        await update.message.reply_text(msg, parse_mode='Markdown')
         return ConversationHandler.END
         
     if text == "tovar-nomlari":
@@ -1319,6 +1388,9 @@ def main():
     # Avtomatik bron tasdiqlash vazifasini qo'shamiz (har 60 soniyada tekshiradi, birinchi marta 10 soniyadan keyin boshlaydi)
     if application.job_queue:
         application.job_queue.run_repeating(auto_confirm_brons_job, interval=60, first=10)
+
+    # Global xato handler - barcha xatolarni ushlab turadi
+    application.add_error_handler(global_error_handler)
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("id", cmd_id))

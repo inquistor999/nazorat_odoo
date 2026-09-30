@@ -1,5 +1,6 @@
 import json
 import os
+import asyncio
 from datetime import datetime, timedelta
 import logging
 from telegram.ext import ContextTypes
@@ -122,5 +123,19 @@ async def run_monitoring_jobs(context: ContextTypes.DEFAULT_TYPE):
     for alert in alerts_to_send:
         try:
             await context.bot.send_message(chat_id=admin_id, text=alert, parse_mode='Markdown')
+            await asyncio.sleep(0.5)  # Flood control oldini olish uchun kechiktirish
         except Exception as e:
-            logging.error(f"Admin guruhiga xabar yuborishda xato: {e}")
+            err_msg = str(e)
+            if 'Flood control' in err_msg or 'Too Many Requests' in err_msg:
+                # Flood limitga tushsak, ko'proq kutamiz
+                import re
+                wait_match = re.search(r'Retry in (\d+)', err_msg)
+                wait_secs = int(wait_match.group(1)) + 1 if wait_match else 15
+                logging.warning(f"Flood control: {wait_secs}s kutilmoqda...")
+                await asyncio.sleep(wait_secs)
+                try:
+                    await context.bot.send_message(chat_id=admin_id, text=alert, parse_mode='Markdown')
+                except Exception as e2:
+                    logging.error(f"Qayta urinishda ham xato: {e2}")
+            else:
+                logging.error(f"Admin guruhiga xabar yuborishda xato: {e}")

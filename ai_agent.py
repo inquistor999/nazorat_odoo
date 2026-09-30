@@ -6,10 +6,10 @@ from odoo_client import OdooClient
 import google.generativeai as genai
 from odoo_tools import odoo_tools_list
 
-def get_odoo_stats():
+def get_odoo_stats(username=None, password=None):
     """Odoo bazasidan umumiy statistikalarni olib beradi"""
     try:
-        odoo = OdooClient()
+        odoo = OdooClient(username, password)
         return odoo.get_general_stats()
     except Exception as e:
         return f"Odoo xatosi: {e}"
@@ -274,10 +274,21 @@ Vazifangiz:
                 return mem_ans
             
         context = ""
+        # 3-bosqichli qat'iy tekshiruv (User Request)
+        context += f"\n[TIZIM KONTROLI - 3 BOSQICHLI TEKSHIRUV]\n"
+        context += f"1. Telegram ID tasdiqlandi: {user_id}\n"
+        if role == 'manager':
+            context += f"2. Odoo tizimida tasdiqlangan rol: MENEJER ({odoo_manager})\n"
+            context += f"3. Qat'iy cheklov: Siz FAQAT '{odoo_manager}' profili nomidan ish qilasiz (Odoo login: {odoo_login}). Agar Odoo da Admin profiliga o'tib qolgan bo'lsangiz, uni darhol yopib, faqat '{odoo_manager}' bazasi va xuquqidan foydalanishingiz SHART! Boshqa ishlarni qilish ta'qiqlanadi.\n"
+        else:
+            context += f"2. Odoo tizimida tasdiqlangan rol: BOSH ADMIN (Super Admin)\n"
+            context += f"3. Qat'iy cheklov: Siz hamma huquqlarga egasiz.\n"
+        context += f"[TEKSHIRUV YAKUNLANDI]\n\n"
+
         # 2. Odoo statistikasimi?
         text_lower = text.lower()
         if 'odoo' in text_lower or 'ishchi' in text_lower or 'sotuv' in text_lower or 'statistika' in text_lower:
-            odoo_data = get_odoo_stats()
+            odoo_data = get_odoo_stats(odoo_login, odoo_password)
             context += f"Odoo bazasidan hozir olingan ma'lumot:\\n{odoo_data}\\n"
             
         # Manager context prepending

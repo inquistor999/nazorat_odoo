@@ -28,6 +28,7 @@ async def process_user_buffer(user_id, chat_id, context, user_name):
     texts = buffer.get('texts', [])
     image_paths = buffer.get('image_paths', [])
     voice_paths = buffer.get('voice_paths', [])
+    msg_id = buffer.get('msg_id')  # log_incoming dan kelgan ID
     
     combined_text = "\\n".join(texts)
     
@@ -62,21 +63,25 @@ async def process_user_buffer(user_id, chat_id, context, user_name):
             response = response.replace(image_match.group(0), "").strip()
             if os.path.exists(filename):
                 await context.bot.send_photo(chat_id=chat_id, photo=open(filename, 'rb'), caption=response)
-                os.remove(filename)  # Delete image after sending
+                os.remove(filename)
             else:
                 await context.bot.send_message(chat_id=chat_id, text=response)
         else:
             await context.bot.send_message(chat_id=chat_id, text=response)
         
-        # Chat tarixini to'g'ri username bilan yangilash
+        # Bot javobini tarixga qo'shamiz (xabar allaqachon log_incoming da saqlanган)
         import chat_history as ch
-        ch.add_message(
-            user_id=user_id,
-            username=user_name,
-            odoo_manager=odoo_manager or '',
-            user_text=combined_text if combined_text else '(Rasm yoki Ovozli xabar)',
-            bot_reply=response
-        )
+        if msg_id:
+            ch.update_bot_reply(user_id, msg_id, response)
+        else:
+            # Eski fallback
+            ch.add_message(
+                user_id=user_id,
+                username=user_name,
+                odoo_manager=odoo_manager or '',
+                user_text=combined_text if combined_text else '(Rasm yoki Ovozli xabar)',
+                bot_reply=response
+            )
         
     except Exception as e:
         import logging
@@ -564,8 +569,26 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
         return ConversationHandler.END
     else:
         # Xabarlarni yig'ish mantiqi (Aggregation)
+        
+        # === DARHOL SAQLASH: Xabar kelgan zahoti tarixga yoziladi ===
+        # Foydalanuvchi keyinchalik o'chirib yuborsa ham bu yozuv saqlanib qoladi
+        import chat_history as ch
+        users_now = load_allowed_users()
+        odoo_mgr_now = users_now.get(str(user_id), {}).get('odoo_manager', '') or ''
+        incoming_text = text if text else ('(Ovozli xabar)' if update.message.voice else ('(Rasm)' if update.message.photo else '(Fayl)'))
+        msg_id = ch.log_incoming(
+            user_id=user_id,
+            username=user_name,
+            odoo_manager=odoo_mgr_now,
+            user_text=incoming_text
+        )
+        # ============================================================
+        
         if user_id not in user_message_buffers:
-            user_message_buffers[user_id] = {'texts': [], 'image_paths': [], 'voice_paths': []}
+            user_message_buffers[user_id] = {'texts': [], 'image_paths': [], 'voice_paths': [], 'msg_id': msg_id}
+        else:
+            # Agar buffer allaqachon bor bo'lsa, oxirgi msg_id ni yangilaymiz
+            user_message_buffers[user_id]['msg_id'] = msg_id
             
         buffer = user_message_buffers[user_id]
         
@@ -606,11 +629,11 @@ async def handle_ai_or_atchot(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             user_timers[user_id] = job
         else:
-            # Agar job_queue ishlamasa, darhol ishga tushiramiz
             import asyncio
             asyncio.create_task(process_user_buffer(user_id, update.message.chat_id, context, user_name))
                 
         return ConversationHandler.END
+
 
 async def auto_confirm_brons_job(context: ContextTypes.DEFAULT_TYPE):
     from odoo_client import OdooClient

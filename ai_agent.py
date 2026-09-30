@@ -308,21 +308,7 @@ Vazifangiz:
             
         ans = await self.generate_response(prompt, user_id, image_paths, voice_paths, role, odoo_manager, odoo_login, odoo_password)
         
-        # 5. Chat tarixini saqlash (hammasi — admin ham, menejer ham)
-        try:
-            import chat_history
-            user_text_for_history = text if text else '(Rasm yoki Ovozli xabar)'
-            chat_history.add_message(
-                user_id=user_id,
-                username=str(user_id),  # username main.py dan keladi, shu yerda user_id saqlaymiz
-                odoo_manager=odoo_manager or '',
-                user_text=user_text_for_history,
-                bot_reply=ans
-            )
-        except Exception as e:
-            logging.error(f"Chat history saqlashda xato: {e}")
-        
-        # 6. Xotiraga saqlash (faqat adminlar uchun)
+        # Xotiraga saqlash (faqat adminlar uchun)
         if "Xatosi" not in ans and "GEMINI_API_KEY" not in ans and not image_paths and role == 'admin':
             self.memory[text] = ans
             self.save_memory()
